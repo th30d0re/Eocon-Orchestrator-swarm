@@ -155,6 +155,15 @@ actor MLXBackend: InferenceBackend {
             FileHandle.standardError.write(Data(s.utf8))
         }
     }
+
+    nonisolated func modelInfo() -> [String: String] {
+        let env = ProcessInfo.processInfo.environment
+        let display = env["EOCON_MLX_LOCAL_DIR"] ?? modelId
+        return [
+            "backend": "mlx",
+            "model": display,
+        ]
+    }
 }
 
 enum MLXBackendError: Error, CustomStringConvertible {
@@ -186,6 +195,14 @@ struct MLXBackend: InferenceBackend {
 
     func generate(session_id: String, prompt: String) async throws -> (text: String, tokens: Int, latency_ms: Int) {
         throw MLXBackendError.notCompiledIn
+    }
+
+    func modelInfo() -> [String: String] {
+        [
+            "backend": "mlx",
+            "model": modelId,
+            "compiledIn": "false",
+        ]
     }
 }
 

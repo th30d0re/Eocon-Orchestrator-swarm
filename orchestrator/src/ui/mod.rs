@@ -2,6 +2,9 @@ pub mod agent_card;
 pub mod chat_panel;
 pub mod gist_widget;
 pub mod layout;
+pub mod mention_picker;
+pub mod models_panel;
+pub mod picker;
 pub mod prompt;
 pub mod status_bar;
 pub mod theme;
@@ -13,7 +16,9 @@ use crate::app::App;
 
 /// Render the full swarm UI.
 pub fn render_swarm(frame: &mut Frame, app: &App) {
-    let (chat, workflow, status, input) = layout::compute_swarm(frame.area(), app.swarm_layout);
+    let input_height = prompt::input_height(app, frame.area().width);
+    let (chat, workflow, models, status, input) =
+        layout::compute_swarm(frame.area(), app.swarm_layout, input_height);
 
     if let Some(rect) = chat {
         frame.render_widget(chat_panel::render(app), rect);
@@ -21,8 +26,15 @@ pub fn render_swarm(frame: &mut Frame, app: &App) {
     if let Some(rect) = workflow {
         frame.render_widget(workflow_panel::render(app), rect);
     }
+    if let Some(rect) = models {
+        frame.render_widget(models_panel::render(app), rect);
+    }
     frame.render_widget(status_bar::render(app), status);
     frame.render_widget(prompt::input_bar(app), input);
+
+    // Render pickers last so they float above everything else.
+    picker::render(frame, app);
+    mention_picker::render(frame, app);
 }
 
 #[cfg(test)]
@@ -43,5 +55,58 @@ mod tests {
             .map(|col| buf[(col, 0)].symbol().to_string())
             .collect();
         assert!(row0.contains("Chat") || row0.contains("Workflow"));
+    }
+
+    #[test]
+    fn slash_command_picker_renders() {
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = App::new(true);
+        app.input_buffer = "/ag".to_string();
+        app.input_cursor = 3;
+        app.maybe_open_picker();
+        terminal.draw(|frame| render_swarm(frame, &app)).unwrap();
+        let buf = terminal.backend().buffer();
+        let content: String = (0..24)
+            .flat_map(|row| (0..80).map(move |col| (col, row)))
+            .map(|(col, row)| buf[(col, row)].symbol().to_string())
+            .collect();
+        assert!(content.contains("/agent"), "picker should render /agent command");
+    }
+
+    #[test]
+    fn mention_picker_renders() {
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = App::new(true);
+        app.input_buffer = "@ki".to_string();
+        app.input_cursor = 3;
+        app.maybe_open_mention_picker();
+        terminal.draw(|frame| render_swarm(frame, &app)).unwrap();
+        let buf = terminal.backend().buffer();
+        let content: String = (0..24)
+            .flat_map(|row| (0..80).map(move |col| (col, row)))
+            .map(|(col, row)| buf[(col, row)].symbol().to_string())
+            .collect();
+        assert!(content.contains("@kimi"), "mention picker should render @kimi");
+    }
+
+    #[test]
+    fn models_panel_renders() {
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let app = App::new(true);
+        terminal
+            .draw(|frame| {
+                frame.render_widget(models_panel::render(&app), frame.area());
+            })
+            .unwrap();
+        let buf = terminal.backend().buffer();
+        let content: String = (0..24)
+            .flat_map(|row| (0..80).map(move |col| (col, row)))
+            .map(|(col, row)| buf[(col, row)].symbol().to_string())
+            .collect();
+        assert!(content.contains("Models & Providers"), "models panel should render title");
+        assert!(content.contains("@kimi"), "models panel should list @kimi");
     }
 }

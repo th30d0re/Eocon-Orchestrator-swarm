@@ -4,6 +4,7 @@ pub mod app;
 pub mod chat;
 pub mod event;
 pub mod mock;
+pub mod model_registry;
 pub mod observability;
 pub mod policy;
 pub mod pty_screen;
@@ -39,7 +40,7 @@ impl Config {
 }
 
 #[derive(Debug, Clone, clap::Parser)]
-#[command(name = "eocon-swarm")]
+#[command(name = "eos")]
 #[command(about = "Rust TUI multi-agent swarm orchestrator with private memory")]
 #[command(version)]
 pub struct CliArgs {
@@ -67,7 +68,10 @@ pub fn run(config: Config) -> Result<()> {
         app.current_provider = Some(provider);
     }
     if let Some(model) = config.model {
-        app.current_model = Some(model);
+        if let Err(e) = app.apply_model_spec(&model) {
+            eprintln!("Warning: {}", e);
+            app.current_model = Some(model);
+        }
     }
 
     let (_, dummy_rx) = std::sync::mpsc::channel::<crate::agents::runner::RunnerMsg>();

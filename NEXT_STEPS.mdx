@@ -13,7 +13,7 @@ audience: any model/engineer picking up this repo with no prior context
 
 ## 1. What this project is
 
-A Rust terminal UI (`eocon-swarm`) that runs multiple specialist agents with **private
+A Rust terminal UI (`eos`) that runs multiple specialist agents with **private
 memory**, sharing only verified **gists** to a group board, plus an on-device inference
 **sidecar** (`localmodel-lm`, Swift) that serves local models (MLX today, Core AI scaffolded).
 Full design spec: `plans/eocon_swarm_private_memory_e9b065ff.plan.mdx` (in this repo).
@@ -26,13 +26,13 @@ re-init git anywhere above this directory.
 
 | Branch | State |
 |--------|-------|
-| `main` | **Verified baseline.** Rust orchestrator (10/10 tests pass) + sidecar with the **2.x MLX backend proven end-to-end** (real HF download→load→generate). Use for production. Commit `d246462`. |
+| `main` | **Verified baseline.** Rust orchestrator (28 tests pass) + sidecar with the **2.x MLX backend proven end-to-end** (real HF download→load→generate). Use for production. Commit `d246462`. |
 | `mlx-3x-migration` | **WIP.** Migrates the MLX backend to mlx-swift-lm 3.x (ChatSession + KVCache + wired-memory admission). Compiles + activates but the HF downloader adapter stalls (see §6). Commits `abacddc`, `e94302c`. |
 
 ## 3. Layout
 
 ```
-orchestrator/            # Rust TUI crate `eocon-swarm`
+orchestrator/            # Rust TUI crate `eos`
   src/swarm/             # engine, agent, memory, gist, verifier, queue, commands
   src/policy/            # PACT policy (classify→act), RiskLabel
   src/observability/     # trace, metrics, watchdog (OutcomeClassifier/TerminalKind)
@@ -55,14 +55,35 @@ plans/                   # design spec + Apple containerization port plan
 ### Rust orchestrator
 ```bash
 cd orchestrator
-cargo test        # 10/10 pass
+cargo test        # 34 tests pass (33 unit + 1 integration)
 cargo run -- --swarm-demo     # UI demo, no model cost
-./target/debug/eocon-swarm --help
+
+# Install to PATH (places the binary in ~/.cargo/bin)
+cargo install --path .
+eos --help
 ```
+
+Inside the TUI:
+- Type `/` to open the slash-command picker.
+- Type `@` to mention a model (e.g. `@kimi look at X? @claude check it`).
+- Press `Tab` to cycle layouts, including the **Models & Providers** panel.
+- Use `↑`/`↓` to navigate pickers and `Tab` or `Enter` to accept.
+
+Model registry:
+- Default handles: `@kimi` (K2.7 Code), `@claude` (Sonnet 4.6 / Opus 4.8), `@gpt` (GPT-4o),
+  `@codex` (5.5), `@gemini` (3.1 Pro), `@ollama`, `@mlx`, `@coreai`, `@lmstudio`.
+- LM Studio uses the OpenAI-compatible local server on `http://localhost:1234/v1`.
+- Switch variant: `/model set claude opus-4.8`
+- List variants: `/model variants claude`
+- Ping configured model: `/model ping claude`
+- Start with a variant: `eos --model claude:opus-4.8`
 
 ### Sidecar — stub (no ML deps, fast)
 ```bash
 cd localmodel-lm
+# On this machine the default swift-build XCBuild backend fails with the CommandLineTools
+# toolchain ("Unknown error parsing property list"). Use Xcode-beta when that happens:
+#   DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer swift build
 swift build
 printf '{"session_id":"s1","prompt":"hi"}\n' | ./.build/debug/localmodel-lm stub
 # stdout = response JSON; stderr = status JSON (preparing/ready). Keep them separate.
@@ -200,7 +221,7 @@ Completed items from §9:
 
 Verification:
 
-- `cd orchestrator && cargo test` → 18 unit tests + 1 integration test pass.
+- `cd orchestrator && cargo test` → 33 unit tests + 1 integration test pass.
 - `cd localmodel-lm && swift build` → compiles (fallback paths on the 26.2 SDK).
 - `./scripts/build-mlx.sh` → builds successfully; local-dir load generates real text from the
   fused RootLedger models.
@@ -209,10 +230,9 @@ Remaining:
 
 1. Run `./scripts/build-coreai.sh` on a machine with Xcode-beta + macOS 27.0 SDK + Metal
    Toolchain, with an `.aimodel` and tokenizer files, to confirm the decode loop.
-2. Wire `LocalModelProvider` into `chat.rs` so `/agent spawn --provider coreai|mlx` actually
-   uses the managed sidecar (currently the provider table maps to bare commands on PATH).
-3. Add orchestrator-level tests that exercise `LocalModelProvider::spawn` with the stub
-   backend to verify the stderr `ready` handshake end-to-end.
+2. Add orchestrator-level tests that exercise the local-model provider path in `chat.rs`
+   (verify `coreai` and `mlx` `CliConfig` build + env vars are set; mock the sidecar with
+   a stub binary to verify the JSON-lines stdin protocol and stderr `ready` handshake).
 
 ## 12. Core AI Gemma3 conversion validation (2026-06-23 follow-up)
 

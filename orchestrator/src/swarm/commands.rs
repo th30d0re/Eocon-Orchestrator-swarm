@@ -16,6 +16,7 @@ pub fn dispatch(app: &mut App, cmd: &str) {
         "/trace" => handle_trace(app, &parts[1..]),
         "/metrics" => handle_metrics(app),
         "/layout" => app.update(crate::action::Action::ToggleSwarmLayout),
+        "/model" => handle_model(app, &parts[1..]),
         "/help" => handle_help(app),
         "/quit" => app.should_quit = true,
         _ => {
@@ -313,6 +314,75 @@ fn handle_metrics(app: &mut App) {
 fn handle_help(app: &mut App) {
     for cmd in crate::app::SLASH_COMMANDS {
         reply(app, &format!("{} - {}", cmd.name, cmd.description));
+    }
+}
+
+fn handle_model(app: &mut App, args: &[&str]) {
+    use crate::model_registry::{active_variant, find_handle, MODEL_HANDLES};
+
+    if args.is_empty() {
+        reply(app, "Usage: /model list | variants <handle> | set <handle> <variant> | ping <handle>");
+        return;
+    }
+
+    match args[0] {
+        "list" => {
+            for h in MODEL_HANDLES {
+                let v = active_variant(h.handle, &app.active_variants)
+                    .unwrap_or(&h.variants[h.default_variant]);
+                reply(
+                    app,
+                    &format!("@{} → {} ({})", h.handle, v.display_name, v.model),
+                );
+            }
+        }
+        "variants" => {
+            if args.len() < 2 {
+                reply(app, "Usage: /model variants <handle>");
+                return;
+            }
+            let Some(h) = find_handle(args[1]) else {
+                reply(app, &format!("Unknown handle '@{}'", args[1]));
+                return;
+            };
+            reply(app, &format!("Variants for @{}:", h.handle));
+            let active_idx = active_variant(h.handle, &app.active_variants)
+                .map(|v| h.variants.iter().position(|x| x.name == v.name).unwrap_or(h.default_variant))
+                .unwrap_or(h.default_variant);
+            for (i, v) in h.variants.iter().enumerate() {
+                let marker = if i == active_idx { " (active)" } else { "" };
+                reply(app, &format!("  {}{} - {}", v.name, marker, v.display_name));
+            }
+        }
+        "set" => {
+            if args.len() < 3 {
+                reply(app, "Usage: /model set <handle> <variant>");
+                return;
+            }
+            match app.set_active_variant(args[1], args[2]) {
+                Ok(()) => {
+                    let h = find_handle(args[1]).unwrap();
+                    let v = active_variant(args[1], &app.active_variants).unwrap();
+                    reply(
+                        app,
+                        &format!(
+                            "Switched @{} to {} ({})",
+                            h.handle, v.display_name, v.model
+                        ),
+                    );
+                }
+                Err(e) => reply(app, &e),
+            }
+        }
+        "ping" => {
+            if args.len() < 2 {
+                reply(app, "Usage: /model ping <handle>");
+                return;
+            }
+            let result = app.ping_handle(args[1]);
+            reply(app, &result);
+        }
+        _ => reply(app, "Unknown /model subcommand."),
     }
 }
 

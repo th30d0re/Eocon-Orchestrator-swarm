@@ -5,6 +5,13 @@ import Foundation
 protocol InferenceBackend {
     func prepare() async throws
     func generate(session_id: String, prompt: String) async throws -> (text: String, tokens: Int, latency_ms: Int)
+    func modelInfo() -> [String: String]
+}
+
+extension InferenceBackend {
+    func modelInfo() -> [String: String] {
+        ["model": "unknown"]
+    }
 }
 
 /// Stub backend used until Core AI or MLX is wired.

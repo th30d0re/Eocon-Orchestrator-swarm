@@ -17,6 +17,7 @@ import Tokenizers
 /// build with xcodebuild against a 27.0+ SDK. On older SDKs the `#else` path below compiles
 /// instead and fails loudly (this is why `swift build` here uses the fallback — the SDK is
 /// 26.2, which does not ship `CoreAI`).
+@available(macOS 27.0, *)
 final class CoreAIBackend: InferenceBackend, @unchecked Sendable {
     private let modelURL: URL
     private let functionName: String
@@ -471,8 +472,17 @@ final class CoreAIBackend: InferenceBackend, @unchecked Sendable {
             FileHandle.standardError.write(Data(s.utf8))
         }
     }
+
+    nonisolated func modelInfo() -> [String: String] {
+        [
+            "backend": "coreai",
+            "model": modelURL.lastPathComponent,
+            "function": functionName,
+        ]
+    }
 }
 
+@available(macOS 27.0, *)
 enum CoreAIBackendError: Error, CustomStringConvertible {
     case notPrepared
     case functionNotFound(String)
@@ -557,6 +567,14 @@ struct CoreAIBackend: InferenceBackend {
 
     func generate(session_id: String, prompt: String) async throws -> (text: String, tokens: Int, latency_ms: Int) {
         throw CoreAIBackendError.notCompiledIn
+    }
+
+    func modelInfo() -> [String: String] {
+        [
+            "backend": "coreai",
+            "model": modelURL.lastPathComponent,
+            "compiledIn": "false",
+        ]
     }
 }
 

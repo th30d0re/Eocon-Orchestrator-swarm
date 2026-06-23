@@ -47,15 +47,74 @@ func mlxDisplayModel() -> String {
     mlxLocalDir ?? mlxModelId
 }
 
+/// Error thrown when a backend is requested on a platform/runtime that cannot support it.
+enum UnsupportedBackendError: Error, CustomStringConvertible {
+    case runtimeUnavailable(String)
+
+    var description: String {
+        switch self {
+        case .runtimeUnavailable(let reason):
+            return "Runtime unavailable: \(reason)"
+        }
+    }
+}
+
+/// Backend that fails immediately with a clear message when a backend is requested on a
+/// platform/runtime that cannot support it (e.g. Core AI on macOS < 27).
+struct UnsupportedBackend: InferenceBackend {
+    let name: String
+    let reason: String
+
+    func prepare() async throws {
+        throw UnsupportedBackendError.runtimeUnavailable(reason)
+    }
+
+    func generate(session_id: String, prompt: String) async throws -> (text: String, tokens: Int, latency_ms: Int) {
+        throw UnsupportedBackendError.runtimeUnavailable(reason)
+    }
+
+    func modelInfo() -> [String: String] {
+        ["backend": name, "error": reason]
+    }
+}
+
 func makeBackend() -> InferenceBackend {
     switch backendName {
     case "mlx":
         return MLXBackend(modelId: mlxModelId)
     case "coreai":
-        return CoreAIBackend(modelURL: URL(fileURLWithPath: coreaiModelPath), temperature: coreaiTemperature)
+        if #available(macOS 27.0, *) {
+            return CoreAIBackend(modelURL: URL(fileURLWithPath: coreaiModelPath), temperature: coreaiTemperature)
+        } else {
+            return UnsupportedBackend(name: backendName, reason: "Core AI requires macOS 27.0 or newer")
+        }
     default:
         return StubBackend(name: backendName)
     }
+}
+
+// `info <backend>` prints model metadata and exits; it does not start the stdin loop.
+if backendName == "info" {
+    let infoBackendName = args.dropFirst(2).first ?? "stub"
+    let infoBackend: InferenceBackend
+    switch infoBackendName {
+    case "mlx":
+        infoBackend = MLXBackend(modelId: mlxModelId)
+    case "coreai":
+        if #available(macOS 27.0, *) {
+            infoBackend = CoreAIBackend(modelURL: URL(fileURLWithPath: coreaiModelPath), temperature: coreaiTemperature)
+        } else {
+            infoBackend = UnsupportedBackend(name: infoBackendName, reason: "Core AI requires macOS 27.0 or newer")
+        }
+    default:
+        infoBackend = StubBackend(name: infoBackendName)
+    }
+    let info = infoBackend.modelInfo()
+    if let data = try? JSONSerialization.data(withJSONObject: info),
+       let str = String(data: data, encoding: .utf8) {
+        print(str)
+    }
+    exit(0)
 }
 
 let backend = makeBackend()

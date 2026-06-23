@@ -1,11 +1,13 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use crate::action::Action;
 use crate::agents::swift;
+use crate::model_registry::{filter_by_prefix, active_variant, Mention, MODEL_HANDLES};
 use crate::policy::config::{load_global_policy, load_user_policy};
 use crate::policy::engine::PolicyEngine;
-use crate::swarm::agent::{AgentLifecycleState, AgentOutput, AgentRole};
+use crate::swarm::agent::{AgentLifecycleState, AgentOutput, AgentRole, ChatOutput};
 use crate::swarm::engine::SwarmEngine;
 use crate::ui::layout::SwarmLayout;
 use crate::ui::theme::Voice;
@@ -124,6 +126,11 @@ pub struct App {
     pub picker_open: bool,
     pub picker_selected: usize,
     pub picker_filtered: Vec<usize>,
+    pub mention_picker_open: bool,
+    pub mention_picker_selected: usize,
+    pub mention_picker_filtered: Vec<usize>,
+    pub handle_counter: HashMap<String, u32>,
+    pub active_variants: HashMap<String, usize>,
     pub interaction: Vec<InteractionMessage>,
     pub interaction_scroll: u16,
     pub cwd: PathBuf,
@@ -156,6 +163,11 @@ impl App {
             picker_open: false,
             picker_selected: 0,
             picker_filtered: Vec::new(),
+            mention_picker_open: false,
+            mention_picker_selected: 0,
+            mention_picker_filtered: Vec::new(),
+            handle_counter: HashMap::new(),
+            active_variants: HashMap::new(),
             interaction: Vec::new(),
             interaction_scroll: 0,
             cwd: cwd.clone(),
@@ -193,7 +205,9 @@ impl App {
                 self.drain_pty_outputs();
             }
             Action::Tab => {
-                if self.picker_open {
+                if self.mention_picker_open {
+                    self.accept_mention_picker();
+                } else if self.picker_open {
                     self.accept_picker();
                 } else {
                     self.swarm_layout = self.swarm_layout.next();
@@ -224,12 +238,14 @@ impl App {
                 self.input_buffer.insert(self.input_cursor, c);
                 self.input_cursor += 1;
                 self.maybe_open_picker();
+                self.maybe_open_mention_picker();
             }
             Action::InputBackspace => {
                 if self.input_cursor > 0 {
                     self.input_cursor -= 1;
                     self.input_buffer.remove(self.input_cursor);
                     self.maybe_open_picker();
+                    self.maybe_open_mention_picker();
                 }
             }
             Action::InputCursorLeft => {
@@ -246,14 +262,21 @@ impl App {
                 self.input_buffer.clear();
                 self.input_cursor = 0;
                 self.picker_open = false;
+                self.mention_picker_open = false;
             }
             Action::InputSubmit => {
                 if self.picker_open {
                     self.accept_picker();
+                } else if self.mention_picker_open {
+                    self.accept_mention_picker();
                 } else {
                     let cmd = self.input_buffer.trim().to_string();
                     if !cmd.is_empty() {
-                        self.handle_command(&cmd);
+                        if cmd.starts_with('/') {
+                            self.handle_command(&cmd);
+                        } else {
+                            self.handle_natural_input(&cmd);
+                        }
                     }
                     self.input_buffer.clear();
                     self.input_cursor = 0;
@@ -263,11 +286,17 @@ impl App {
             Action::PickerUp => {
                 if self.picker_open && self.picker_selected > 0 {
                     self.picker_selected -= 1;
+                } else if self.mention_picker_open && self.mention_picker_selected > 0 {
+                    self.mention_picker_selected -= 1;
                 }
             }
             Action::PickerDown => {
                 if self.picker_open && self.picker_selected + 1 < self.picker_filtered.len() {
                     self.picker_selected += 1;
+                } else if self.mention_picker_open
+                    && self.mention_picker_selected + 1 < self.mention_picker_filtered.len()
+                {
+                    self.mention_picker_selected += 1;
                 }
             }
             Action::ScrollUp => {
@@ -444,7 +473,7 @@ impl App {
         }
     }
 
-    fn maybe_open_picker(&mut self) {
+    pub(crate) fn maybe_open_picker(&mut self) {
         if self.input_buffer.starts_with('/') && !self.input_buffer.contains(' ') {
             self.picker_open = true;
             self.refresh_picker();
@@ -453,7 +482,7 @@ impl App {
         }
     }
 
-    fn refresh_picker(&mut self) {
+    pub(crate) fn refresh_picker(&mut self) {
         let filter = self
             .input_buffer
             .strip_prefix('/')
@@ -473,7 +502,7 @@ impl App {
             .min(self.picker_filtered.len().saturating_sub(1));
     }
 
-    fn accept_picker(&mut self) {
+    pub(crate) fn accept_picker(&mut self) {
         if let Some(&idx) = self.picker_filtered.get(self.picker_selected) {
             let cmd = &SLASH_COMMANDS[idx];
             if cmd.takes_arg {
@@ -488,6 +517,205 @@ impl App {
                 self.handle_command(&full_cmd);
             }
         }
+    }
+
+    pub(crate) fn maybe_open_mention_picker(&mut self) {
+        // Only open if the current word starts with '@' and we are not inside a slash command.
+        if self.picker_open {
+            self.mention_picker_open = false;
+            return;
+        }
+        let before_cursor = &self.input_buffer[..self.input_cursor];
+        let current_word = before_cursor.split_whitespace().last().unwrap_or("");
+        if current_word.starts_with('@') && current_word.len() > 1 {
+            self.mention_picker_open = true;
+            self.refresh_mention_picker();
+        } else {
+            self.mention_picker_open = false;
+        }
+    }
+
+    pub(crate) fn refresh_mention_picker(&mut self) {
+        let before_cursor = &self.input_buffer[..self.input_cursor];
+        let current_word = before_cursor.split_whitespace().last().unwrap_or("");
+        let prefix = current_word.strip_prefix('@').unwrap_or("");
+        self.mention_picker_filtered = filter_by_prefix(prefix);
+        self.mention_picker_selected = self
+            .mention_picker_selected
+            .min(self.mention_picker_filtered.len().saturating_sub(1));
+    }
+
+    pub(crate) fn accept_mention_picker(&mut self) {
+        if let Some(&idx) = self
+            .mention_picker_filtered
+            .get(self.mention_picker_selected)
+        {
+            let handle = MODEL_HANDLES[idx].handle;
+            let before_cursor = &self.input_buffer[..self.input_cursor];
+            let after_cursor = &self.input_buffer[self.input_cursor..];
+
+            // Find the start of the current '@prefix' word.
+            let word_start = before_cursor
+                .rfind(|c: char| c.is_whitespace())
+                .map(|i| i + 1)
+                .unwrap_or(0);
+            let new_before = format!("{}@{} ", &before_cursor[..word_start], handle);
+            self.input_buffer = format!("{}{}", new_before, after_cursor);
+            self.input_cursor = new_before.len();
+            self.mention_picker_open = false;
+        }
+    }
+
+    /// Apply a CLI/TUI model spec like `claude:opus-4.8`.
+    pub fn apply_model_spec(&mut self, spec: &str) -> Result<(), String> {
+        if let Some((handle, variant)) = crate::model_registry::parse_model_spec(spec) {
+            self.set_active_variant(handle, variant)
+        } else {
+            // Treat as raw model ID for the default provider.
+            self.current_model = Some(spec.to_string());
+            Ok(())
+        }
+    }
+
+    pub fn set_active_variant(&mut self, handle: &str, variant_name: &str) -> Result<(), String> {
+        let h = crate::model_registry::find_handle(handle)
+            .ok_or_else(|| format!("Unknown handle '@{}'", handle))?;
+        let idx = h
+            .variants
+            .iter()
+            .position(|v| v.name.eq_ignore_ascii_case(variant_name))
+            .ok_or_else(|| {
+                let names: Vec<_> = h.variants.iter().map(|v| v.name).collect();
+                format!("Unknown variant '{}'. Available: {}", variant_name, names.join(", "))
+            })?;
+        self.active_variants.insert(h.handle.to_lowercase(), idx);
+        // Also update current_provider/model to reflect the default model identity.
+        let v = &h.variants[idx];
+        self.current_provider = Some(v.provider.to_string());
+        self.current_model = Some(v.model.to_string());
+        Ok(())
+    }
+
+    /// Return a human-readable description of the model that will be used for a handle.
+    pub fn ping_handle(&self, handle: &str) -> String {
+        let Some(h) = crate::model_registry::find_handle(handle) else {
+            return format!("Unknown handle '@{}'", handle);
+        };
+        let v = active_variant(handle, &self.active_variants).unwrap_or(&h.variants[h.default_variant]);
+
+        // For local providers, try to get runtime confirmation from the sidecar or HTTP API.
+        let runtime = match v.provider {
+            "coreai" | "mlx" => self.spawn_local_model_info(v.provider),
+            "ollama" => self.spawn_ollama_info(),
+            "lmstudio" => crate::chat::lmstudio_model_info(),
+            _ => None,
+        };
+
+        if let Some(name) = runtime {
+            format!(
+                "@{} → {} ({}); runtime reports: {}",
+                h.handle, v.display_name, v.model, name
+            )
+        } else {
+            format!("@{} → {} ({})", h.handle, v.display_name, v.model)
+        }
+    }
+
+    fn spawn_local_model_info(&self, backend: &str) -> Option<String> {
+        let paths = crate::chat::localmodel_lm_paths();
+        let exe = paths
+            .iter()
+            .find(|p| std::path::Path::new(p).is_file())?;
+        let output = std::process::Command::new(exe)
+            .arg("info")
+            .arg(backend)
+            .envs(std::env::vars())
+            .output()
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        let text = String::from_utf8(output.stdout).ok()?;
+        // Expect a JSON object with a "model" field.
+        serde_json::from_str::<serde_json::Value>(&text)
+            .ok()
+            .and_then(|v| v.get("model")?.as_str().map(|s| s.to_string()))
+    }
+
+    fn spawn_ollama_info(&self) -> Option<String> {
+        let output = std::process::Command::new("ollama")
+            .args(["list"])
+            .output()
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        let text = String::from_utf8(output.stdout).ok()?;
+        text.lines().next().map(|s| s.to_string())
+    }
+
+    fn handle_natural_input(&mut self, input: &str) {
+        self.interaction.push(InteractionMessage {
+            voice: Voice::User,
+            text: input.to_string(),
+        });
+        let mentions = crate::model_registry::parse_mentions(input);
+        if mentions.is_empty() {
+            self.swarm_engine.run_swarm_task(input);
+            self.swarm_phase = SwarmPhase::Running;
+        } else {
+            self.spawn_from_mentions(mentions);
+        }
+    }
+
+    fn spawn_from_mentions(&mut self, mentions: Vec<Mention>) {
+        for mention in mentions {
+            let variant = active_variant(&mention.handle, &self.active_variants);
+            let (provider, model, role) = match variant {
+                Some(v) => (v.provider.to_string(), v.model.to_string(), v.role),
+                None => {
+                    self.interaction.push(InteractionMessage {
+                        voice: Voice::Warning,
+                        text: format!(
+                            "Unknown handle '@{}'; using default provider/model.",
+                            mention.handle
+                        ),
+                    });
+                    (
+                        self.current_provider.clone().unwrap_or_else(|| "anthropic".to_string()),
+                        self.current_model.clone().unwrap_or_else(|| "claude-sonnet-4.6".to_string()),
+                        AgentRole::Generalist,
+                    )
+                }
+            };
+
+            if mention.text.trim().is_empty() {
+                self.interaction.push(InteractionMessage {
+                    voice: Voice::Warning,
+                    text: format!("@{} has no task text; skipping.", mention.handle),
+                });
+                continue;
+            }
+
+            let counter = self.handle_counter.entry(mention.handle.clone()).or_insert(0);
+            *counter += 1;
+            let name = format!("{}-{}", mention.handle, counter);
+
+            let id = self.swarm_engine.spawn_agent(name.clone(), role, provider, model);
+            if let Some(agent) = self.swarm_engine.get_agent_mut(&id) {
+                let req = agent.spawn_chat(&mention.text);
+                let rx = crate::chat::spawn_chat_request(req);
+                agent.output = AgentOutput::Chat(ChatOutput {
+                    rx: Some(rx),
+                    pending_response: String::new(),
+                });
+            }
+            self.interaction.push(InteractionMessage {
+                voice: Voice::System,
+                text: format!("Spawned {} ({}) with task: {}", name, mention.handle, mention.text),
+            });
+        }
+        self.swarm_phase = SwarmPhase::Running;
     }
 
     fn handle_command(&mut self, cmd: &str) {

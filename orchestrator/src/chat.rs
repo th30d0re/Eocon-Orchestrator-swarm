@@ -17,12 +17,16 @@ pub struct ChatRequest {
     pub system_prompt: Option<String>,
 }
 
-/// Spawn a background thread that runs the provider's CLI and returns the
+/// Spawn a background thread that runs the provider's CLI or HTTP client and returns the
 /// assistant's text via a channel.
 pub fn spawn_chat_request(req: ChatRequest) -> Receiver<Result<String, String>> {
     let (tx, rx) = channel();
     std::thread::spawn(move || {
-        let result = run_cli_chat(req);
+        let result = if req.provider == "lmstudio" {
+            run_lmstudio_chat(req)
+        } else {
+            run_cli_chat(req)
+        };
         let _ = tx.send(result);
     });
     rx
@@ -40,14 +44,19 @@ fn run_cli_chat(req: ChatRequest) -> Result<String, String> {
                cursor    → cursor\n\
                ollama    → ollama\n\
                google    → gemini\n\
-               coreai    → coreai-lm sidecar\n\
-               mlx       → localmodel-lm sidecar\n\
+               coreai    → localmodel-lm sidecar (EOCON_COREAI_MODEL)\n\
+               mlx       → localmodel-lm sidecar (EOCON_MLX_MODEL)\n\
+               lmstudio  → OpenAI-compatible HTTP API on localhost:1234\n\
              Install the provider's CLI and ensure it's in your PATH.",
             req.provider
         )
     })?;
 
-    let prompt = format_messages(&req.messages);
+    let prompt = if cfg.json_input {
+        latest_user_message(&req.messages)
+    } else {
+        format_messages(&req.messages)
+    };
 
     let mut args = cfg.args.clone();
     if cfg.prompt_via_arg {
@@ -56,6 +65,9 @@ fn run_cli_chat(req: ChatRequest) -> Result<String, String> {
 
     let mut cmd = Command::new(&cfg.program);
     cmd.args(&args);
+    for (k, v) in &cfg.env {
+        cmd.env(k, v);
+    }
     cmd.stdin(Stdio::piped());
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
@@ -67,6 +79,16 @@ fn run_cli_chat(req: ChatRequest) -> Result<String, String> {
     if cfg.prompt_via_arg {
         if let Some(stdin) = child.stdin.take() {
             drop(stdin);
+        }
+    } else if cfg.json_input {
+        let input = serde_json::json!({
+            "session_id": format!("eocon-{}", uuid::Uuid::new_v4()),
+            "prompt": prompt,
+        });
+        if let Some(mut stdin) = child.stdin.take() {
+            let _ = stdin.write_all(input.to_string().as_bytes());
+            let _ = stdin.write_all(b"\n");
+            let _ = stdin.flush();
         }
     } else {
         if let Some(mut stdin) = child.stdin.take() {
@@ -148,6 +170,8 @@ struct CliConfig {
     args: Vec<String>,
     prompt_via_arg: bool,
     output_file: Option<PathBuf>,
+    env: Vec<(String, String)>,
+    json_input: bool,
 }
 
 fn build_cli_config(req: &ChatRequest) -> Option<CliConfig> {
@@ -166,6 +190,8 @@ fn build_cli_config(req: &ChatRequest) -> Option<CliConfig> {
                 args,
                 prompt_via_arg: false,
                 output_file: None,
+                env: vec![],
+                json_input: false,
             })
         }
         "moonshot" => {
@@ -176,6 +202,8 @@ fn build_cli_config(req: &ChatRequest) -> Option<CliConfig> {
                 args: vec!["--quiet".into(), "--mcp-config-file".into(), empty_mcp],
                 prompt_via_arg: false,
                 output_file: None,
+                env: vec![],
+                json_input: false,
             })
         }
         "openai" | "codex" => {
@@ -198,6 +226,8 @@ fn build_cli_config(req: &ChatRequest) -> Option<CliConfig> {
                 ],
                 prompt_via_arg: true,
                 output_file: Some(output_file),
+                env: vec![],
+                json_input: false,
             })
         }
         "cursor" => {
@@ -207,6 +237,8 @@ fn build_cli_config(req: &ChatRequest) -> Option<CliConfig> {
                 args: vec!["agent".into()],
                 prompt_via_arg: false,
                 output_file: None,
+                env: vec![],
+                json_input: false,
             })
         }
         "ollama" => {
@@ -219,6 +251,8 @@ fn build_cli_config(req: &ChatRequest) -> Option<CliConfig> {
                 args: vec!["run".into(), model.into()],
                 prompt_via_arg: false,
                 output_file: None,
+                env: vec![],
+                json_input: false,
             })
         }
         "google" => {
@@ -228,24 +262,30 @@ fn build_cli_config(req: &ChatRequest) -> Option<CliConfig> {
                 args: vec![],
                 prompt_via_arg: false,
                 output_file: None,
+                env: vec![],
+                json_input: false,
             })
         }
         "coreai" => {
-            let exe = find_exe("coreai-lm", &[])?;
+            let exe = find_exe("localmodel-lm", localmodel_lm_paths().as_slice())?;
             Some(CliConfig {
                 program: exe,
-                args: vec!["--backend".into(), "coreai".into()],
+                args: vec!["coreai".into()],
                 prompt_via_arg: false,
                 output_file: None,
+                env: vec![("EOCON_COREAI_MODEL".into(), model.into())],
+                json_input: true,
             })
         }
         "mlx" => {
-            let exe = find_exe("localmodel-lm", &[])?;
+            let exe = find_exe("localmodel-lm", localmodel_lm_paths().as_slice())?;
             Some(CliConfig {
                 program: exe,
-                args: vec!["--backend".into(), "mlx".into()],
+                args: vec!["mlx".into()],
                 prompt_via_arg: false,
                 output_file: None,
+                env: vec![("EOCON_MLX_MODEL".into(), model.into())],
+                json_input: true,
             })
         }
         _ => None,
@@ -291,6 +331,23 @@ fn format_messages(messages: &[ChatMessage]) -> String {
     parts.join("\n\n")
 }
 
+fn latest_user_message(messages: &[ChatMessage]) -> String {
+    messages
+        .iter()
+        .rev()
+        .find(|m| m.role == "user")
+        .map(|m| m.content.clone())
+        .unwrap_or_else(|| format_messages(messages))
+}
+
+pub fn localmodel_lm_paths() -> Vec<&'static str> {
+    vec![
+        "/Users/emmanuel/Dev/Tools/Eocon-Orchestrator-swarm/localmodel-lm/.build/xcode-coreai/Build/Products/Debug/localmodel-lm",
+        "/Users/emmanuel/Dev/Tools/Eocon-Orchestrator-swarm/localmodel-lm/.build/xcode/Build/Products/Debug/localmodel-lm",
+        "/Users/emmanuel/Dev/Tools/Eocon-Orchestrator-swarm/localmodel-lm/.build/debug/localmodel-lm",
+    ]
+}
+
 fn strip_ansi(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
     let mut chars = s.chars();
@@ -306,6 +363,68 @@ fn strip_ansi(s: &str) -> String {
         }
     }
     result
+}
+
+// ── LM Studio (OpenAI-compatible local server) ───────────────────────────────
+
+const LM_STUDIO_BASE_URL: &str = "http://localhost:1234/v1";
+
+/// Query LM Studio's `/v1/models` endpoint to discover the currently loaded model.
+pub fn lmstudio_model_info() -> Option<String> {
+    let resp = ureq::get(&format!("{}/models", LM_STUDIO_BASE_URL))
+        .call()
+        .ok()?;
+    let json: serde_json::Value = resp.into_json().ok()?;
+    parse_lmstudio_models(&json)
+}
+
+fn parse_lmstudio_models(json: &serde_json::Value) -> Option<String> {
+    json["data"]
+        .as_array()
+        .and_then(|arr| arr.first())
+        .and_then(|m| m["id"].as_str())
+        .map(|s| s.to_string())
+}
+
+fn run_lmstudio_chat(req: ChatRequest) -> Result<String, String> {
+    let messages = build_lmstudio_messages(&req);
+    let body = serde_json::json!({
+        "model": if req.model.is_empty() { "local" } else { &req.model },
+        "messages": messages,
+        "temperature": 0.7,
+        "stream": false,
+    });
+
+    let resp = ureq::post(&format!("{}/chat/completions", LM_STUDIO_BASE_URL))
+        .set("Content-Type", "application/json")
+        .send_json(body)
+        .map_err(|e| format!("LM Studio request failed: {}", e))?;
+
+    let json: serde_json::Value = resp
+        .into_json()
+        .map_err(|e| format!("LM Studio response parse failed: {}", e))?;
+
+    parse_lmstudio_response(&json)
+        .ok_or_else(|| "LM Studio response missing content".to_string())
+}
+
+fn parse_lmstudio_response(json: &serde_json::Value) -> Option<String> {
+    json["choices"][0]["message"]["content"]
+        .as_str()
+        .map(|s| s.to_string())
+}
+
+fn build_lmstudio_messages(req: &ChatRequest) -> Vec<serde_json::Value> {
+    let mut messages = Vec::new();
+    if let Some(ref system) = req.system_prompt {
+        if !system.is_empty() {
+            messages.push(serde_json::json!({"role": "system", "content": system}));
+        }
+    }
+    for msg in &req.messages {
+        messages.push(serde_json::json!({"role": msg.role, "content": msg.content}));
+    }
+    messages
 }
 
 /// Build a system prompt for the swarm context.
@@ -397,5 +516,40 @@ mod tests {
         assert!(prompt.contains("Eocon Swarm Orchestrator"));
         assert!(prompt.contains("You are in charge."));
         assert!(!prompt.contains("name: test-orchestrator"));
+    }
+
+    #[test]
+    fn build_lmstudio_messages_includes_system_prompt() {
+        let req = ChatRequest {
+            provider: "lmstudio".into(),
+            model: "local".into(),
+            messages: vec![ChatMessage {
+                role: "user".into(),
+                content: "hello".into(),
+            }],
+            system_prompt: Some("You are a tester.".into()),
+        };
+        let msgs = build_lmstudio_messages(&req);
+        assert_eq!(msgs.len(), 2);
+        assert_eq!(msgs[0]["role"], "system");
+        assert_eq!(msgs[0]["content"], "You are a tester.");
+        assert_eq!(msgs[1]["role"], "user");
+        assert_eq!(msgs[1]["content"], "hello");
+    }
+
+    #[test]
+    fn parse_lmstudio_response_extracts_content() {
+        let json = serde_json::json!({
+            "choices": [{ "message": { "content": "Hi there" } }]
+        });
+        assert_eq!(parse_lmstudio_response(&json), Some("Hi there".to_string()));
+    }
+
+    #[test]
+    fn parse_lmstudio_models_extracts_first_model_id() {
+        let json = serde_json::json!({
+            "data": [{ "id": "qwen2.5-7b-instruct" }, { "id": "other" }]
+        });
+        assert_eq!(parse_lmstudio_models(&json), Some("qwen2.5-7b-instruct".to_string()));
     }
 }

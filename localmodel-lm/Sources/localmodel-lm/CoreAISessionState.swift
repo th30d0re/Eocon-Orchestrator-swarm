@@ -12,6 +12,7 @@ import CoreAI
 /// states (the LCGuard boundary). This struct holds the per-agent decode bookkeeping; the
 /// opaque Core AI `states` handle is attached once the decode loop is wired (it can't be
 /// referenced until the `CoreAI` module is linked — see `CoreAIBackend.swift`).
+@available(macOS 27.0, *)
 struct CoreAISessionState {
     /// Token ids produced/consumed so far — context-length tracking and re-feed.
     var tokenHistory: [Int] = []
