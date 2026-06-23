@@ -246,12 +246,45 @@ Action item for the Core AI sidecar: ensure the inference path applies the model
 template (from the bundled `tokenizer_config.json`) before encoding the prompt, otherwise
 chat-tuned models will appear to produce garbage.
 
+A live bundle has been exported:
+
+```
+/Users/emmanuel/Dev/Tools/Eocon-Orchestrator-swarm/RootLedger-Gemma3-12B-CoreAI/
+```
+
+Pass this path to the sidecar:
+
+```bash
+EOCON_COREAI_MODEL=/Users/emmanuel/Dev/Tools/Eocon-Orchestrator-swarm/RootLedger-Gemma3-12B-CoreAI/RootLedger-Gemma3-12B-CoreAI.aimodel \
+  localmodel-lm/.build/xcode-coreai/Build/Products/Debug/localmodel-lm coreai
+```
+
+**Caveat:** the export process crashed/restarted the machine during finalization. The
+`main.mlirb` (10.7 GB) was written to disk before the crash and the tokenizer/metadata were
+added afterward, but the `.aimodel` is unverified until `AIModel(contentsOf:)` loads it
+successfully. If it fails to specialize, re-run the export on hardware with more memory
+headroom or reduce `--max-context-length` further.
+
 > **RESOLVED (commit `9222154`).** `CoreAIBackend.generate` now applies the bundled
 > tokenizer's chat template via `applyChatTemplate(messages: [{role:user, content:prompt}],
 > addGenerationPrompt: true)` when `hasChatTemplate` is true, falling back to plain `encode`
 > for base models. Builds clean against the 27.0 SDK (`build-coreai.sh`).
 >
-> **Still pending:** a live `.aimodel` smoke test (none on disk yet) to confirm coherent
-> end-to-end output and verify the `KVCache` layout
-> `(n_layers, batch, n_kv_heads, seq_len, head_dim)` at runtime. Run with
-> `EOCON_COREAI_MODEL=<path-to-.aimodel> <coreai-build>/localmodel-lm coreai`.
+> **Live smoke test (2026-06-23) — sidecar verified up to specialization.** Ran the
+> 12B bundle through `localmodel-lm coreai`. The sidecar behaved correctly: emitted
+> `preparing/init` → `preparing/specialize`, then failed loudly and cleanly with the exact
+> Core AI error on stderr (exit 1, nothing on stdout):
+> `failedToSpecialize("Asset … is malformed: Missing hash file")`.
+>
+> **Root cause = the incomplete export, not the sidecar.** The `.aimodel` contains only
+> `main.mlirb` + a minimal `metadata.json` (`assetVersion`/`creationDate`); the export's
+> finalization (which writes Core AI's content-hash/integrity file) never ran, so
+> `AIModel(contentsOf:)` rejects the bundle. **Fix is on the conversion side:** re-run the
+> export to completion (more memory headroom or smaller `--max-context-length`) so the hash
+> file is written.
+>
+> **Decode loop + chat template remain unexercised** (specialization is a prerequisite). To
+> validate them quickly without the heavy 12B re-export, convert a **small** model (or use an
+> Apple Core AI sample `.aimodel`) and run the same command — that exercises the chat
+> template, prefill/decode, KV-state `MutableViews`, and the
+> `(n_layers, batch, n_kv_heads, seq_len, head_dim)` layout at runtime.
