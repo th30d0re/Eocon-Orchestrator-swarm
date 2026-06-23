@@ -1,0 +1,40 @@
+#[derive(Debug, Clone, PartialEq)]
+pub enum Action {
+    Tab,
+    ShiftTab,
+    Skip,
+    Abort,
+    Quit,
+    Confirm(bool),
+    ApplyChanges,
+    DiscardChanges,
+    ToggleHelp,
+    Tick,
+    Resize(u16, u16),
+    AgentBytes(Vec<u8>),
+    AgentExited(i32),
+    AgentError(String),
+    InputChar(char),
+    InputBackspace,
+    InputSubmit,
+    InputCancel,
+    InputCursorLeft,
+    InputCursorRight,
+    // Command picker navigation
+    PickerUp,
+    PickerDown,
+    // Scrolling
+    ScrollUp,
+    ScrollDown,
+    OutputScrollUp,
+    OutputScrollDown,
+    // Pane focus
+    FocusLeft,
+    FocusRight,
+    // Swarm-specific actions
+    SelectNextAgent,
+    SelectPrevAgent,
+    ToggleSwarmLayout,
+    AgentProgress { agent_id: String, tokens: u64 },
+    GistPublished(String),
+}

@@ -1,0 +1,15 @@
+# Rust
+target/
+
+# SwiftPM / Xcode build output
+.build/
+DerivedData/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+
+# macOS
+.DS_Store
+
+# Editor
+.idea/
+*.swp
