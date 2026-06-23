@@ -79,7 +79,17 @@ final class CoreAIBackend: InferenceBackend, @unchecked Sendable {
         let positionIdsName = inputNames.count > 1 ? inputNames[1] : nil
         let logitsName = outputNames[0]
 
-        let promptTokenIDs = tokenizer.encode(text: prompt, addSpecialTokens: true)
+        // Chat-tuned models (e.g. Gemma-3) require their chat template — encoding the raw
+        // prompt makes them stall/repeat (validated: this was the cause of "garbage" output,
+        // not the conversion). Apply the bundled tokenizer's template with a generation
+        // prompt; fall back to plain encoding for base (non-chat) models without a template.
+        let promptTokenIDs: [Int]
+        if tokenizer.hasChatTemplate {
+            let messages: [Message] = [["role": "user", "content": prompt]]
+            promptTokenIDs = try tokenizer.applyChatTemplate(messages: messages, addGenerationPrompt: true)
+        } else {
+            promptTokenIDs = tokenizer.encode(text: prompt, addSpecialTokens: true)
+        }
         guard !promptTokenIDs.isEmpty else { throw CoreAIBackendError.emptyPrompt }
 
         var state = sessions[session_id] ?? CoreAISessionState()
