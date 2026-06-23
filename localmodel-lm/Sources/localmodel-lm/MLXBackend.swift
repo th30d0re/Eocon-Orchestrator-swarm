@@ -78,19 +78,28 @@ actor MLXBackend: InferenceBackend {
         }
 
         let start = Date()
-        // Admission gating: acquire a wired-memory ticket and generate inside its scope.
-        let (text, genTokens) = try await admission.withAdmission(activeBytes: activeBytes) {
-            var text = ""
-            var tokens = 0
+        // Admission gating: raise the wired-memory limit for this inference, then lower it
+        // when done. We use the ticket's manual start()/end() rather than the closure form
+        // of withWiredLimit, because the closure would capture this actor's `session`
+        // (non-Sendable) and Swift 6 rejects sending self-isolated state into the
+        // nonisolated withWiredLimit method.
+        let ticket = admission.ticket(activeBytes: activeBytes)
+        _ = await ticket.start()
+        var text = ""
+        var genTokens = 0
+        do {
             for try await gen in session.streamDetails(to: prompt, images: [], videos: []) {
                 if case .chunk(let t) = gen {
                     text += t
                 } else if case .info(let info) = gen {
-                    tokens = info.generationTokenCount
+                    genTokens = info.generationTokenCount
                 }
             }
-            return (text, tokens)
+        } catch {
+            _ = await ticket.end()
+            throw error
         }
+        _ = await ticket.end()
         let latency = Int(Date().timeIntervalSince(start) * 1000)
         return (text, genTokens, latency)
     }
