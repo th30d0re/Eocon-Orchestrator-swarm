@@ -7,8 +7,10 @@ The 12B model conversion peaks well above 64 GB of RAM, which is why it must run
 on the laptop.
 
 **What you need on this machine:**
-1. **The fused model weights** — ~6.2 GB. They are *not* online; bring them on the drive.
-   Folder name: `RootLedger-Gemma3-12B-NPBP-Abliterated-v3-Fused/` (contains `*.safetensors`).
+1. **The fused model weights** — ~6.6 GB, on a **private** Hugging Face repo:
+   `Eocon/RootLedger-Gemma3-12B-NPBP-Abliterated-v3-Fused`. The agent downloads it (step 1).
+   Because it's private, you must have HF read access — log in with a token that can read it
+   (or have Eocon add you as a collaborator).
 2. **Xcode 27** (or Xcode-beta) installed — needed to build the Core AI test program.
 3. **Python 3.11** + internet (to install the conversion tools).
 
@@ -40,8 +42,12 @@ specializes and whether generation is coherent (the chat template is applied in 
 ```bash
 git clone <THIS_REPO_URL> Eocon-Orchestrator-swarm
 cd Eocon-Orchestrator-swarm
-# Put the fused model (from the drive) somewhere, e.g.:
-#   ~/models/RootLedger-Gemma3-12B-NPBP-Abliterated-v3-Fused/
+
+# Download the fused model from the PRIVATE HF repo (needs HF read access):
+hf auth login        # token with read access to Eocon/RootLedger-Gemma3-12B-...
+FUSED=~/models/RootLedger-Gemma3-12B-NPBP-Abliterated-v3-Fused
+hf download "Eocon/RootLedger-Gemma3-12B-NPBP-Abliterated-v3-Fused" \
+  --repo-type model --local-dir "$FUSED"
 ```
 
 ### 1. Python envs (two of them)
