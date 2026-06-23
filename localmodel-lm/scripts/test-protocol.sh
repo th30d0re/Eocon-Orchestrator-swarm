@@ -54,6 +54,21 @@ COUNT=$(printf '{"session_id":"a","prompt":"x"}\n{"session_id":"b","prompt":"y"}
 GOOD=$(printf 'not json at all\n{"session_id":"c","prompt":"z"}\n' | "$BIN" stub 2>/dev/null | grep -c '"session_id":"c"')
 [ "$GOOD" -eq 1 ] && ok "malformed line skipped; valid line answered" || bad "malformed-input handling"
 
+# --- Test 5: coreai fails loud when CoreAI is unavailable --------------------
+# This build has no CoreAI (SDK < 27.0), so `--backend coreai` must fail loudly:
+# non-zero exit, an error status on stderr, and no partial response on stdout.
+# (The `mlx` backend is the real one here — deps are active — so it is intentionally
+#  NOT asserted as fail-loud; that only holds in a build without the MLX deps.)
+CA_OUT=$(printf '{"session_id":"s1","prompt":"hi"}\n' | "$BIN" coreai 2>/tmp/proto_coreai_err.txt)
+CA_CODE=$?
+[ "$CA_CODE" -ne 0 ] && ok "coreai exits non-zero when unavailable" || bad "coreai should exit non-zero"
+grep -q '"status":"error"' /tmp/proto_coreai_err.txt && ok "coreai emits error status on stderr" || bad "coreai missing error status"
+[ -z "$CA_OUT" ] && ok "coreai emits no response on stdout when failing" || bad "coreai leaked stdout on failure"
+
+# --- Test 6: unknown backend name falls back to the stub --------------------
+UNK=$(printf '{"session_id":"u","prompt":"x"}\n' | "$BIN" bogus-backend 2>/dev/null | grep -c '"session_id":"u"')
+[ "$UNK" -eq 1 ] && ok "unknown backend falls back to stub" || bad "unknown-backend fallback"
+
 echo
 echo "==> protocol contract: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
