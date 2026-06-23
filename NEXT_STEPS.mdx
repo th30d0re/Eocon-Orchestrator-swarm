@@ -245,3 +245,13 @@ Key technical notes for future work:
 Action item for the Core AI sidecar: ensure the inference path applies the model's chat
 template (from the bundled `tokenizer_config.json`) before encoding the prompt, otherwise
 chat-tuned models will appear to produce garbage.
+
+> **RESOLVED (commit `9222154`).** `CoreAIBackend.generate` now applies the bundled
+> tokenizer's chat template via `applyChatTemplate(messages: [{role:user, content:prompt}],
+> addGenerationPrompt: true)` when `hasChatTemplate` is true, falling back to plain `encode`
+> for base models. Builds clean against the 27.0 SDK (`build-coreai.sh`).
+>
+> **Still pending:** a live `.aimodel` smoke test (none on disk yet) to confirm coherent
+> end-to-end output and verify the `KVCache` layout
+> `(n_layers, batch, n_kv_heads, seq_len, head_dim)` at runtime. Run with
+> `EOCON_COREAI_MODEL=<path-to-.aimodel> <coreai-build>/localmodel-lm coreai`.
