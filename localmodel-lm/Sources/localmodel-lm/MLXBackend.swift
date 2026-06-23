@@ -2,28 +2,32 @@ import Foundation
 
 #if canImport(MLXLMCommon)
 
-@preconcurrency import MLX
-@preconcurrency import MLXLLM
-@preconcurrency import MLXLMCommon
-import Hub  // HubApi, from swift-transformers
+import MLX
+import MLXLMCommon
+import MLXLLM
+// 3.x HF adapters (separate packages per mlx-swift-lm upgrade.md) — PENDING dependency
+// approval; these are third-party (DePasqualeOrg) personal-account packages, not ml-explore.
+import MLXLMHFAPI      // Downloader adapter (HubClient)
+import MLXLMTokenizers // Tokenizer adapter (TokenizersLoader)
 
-/// Real on-device MLX backend, ported from the proven ChAi pattern
-/// (`ChAi_3/Managers/MLXModelManager.swift`, mlx-swift-lm **2.x** API).
+/// Real on-device MLX backend — **3.x API** (ChatSession + KVCache + wired-memory admission).
 ///
-/// Flow: download HF weights → `LLMModelFactory.shared.loadContainer` → per-request
-/// `ModelContainer.perform { prepare(UserInput) ; MLXLMCommon.generate }`, draining the
-/// `Generation` stream into a single response. Private memory is per-`session_id`
-/// (`MLXSessionState`).
+/// Each `session_id` gets its own `ChatSession`, which owns an isolated `KVCache` and reuses
+/// it across turns — true multi-turn caching, no per-turn re-prepare (the 2.x baseline on
+/// `main` re-prepared the full message list each turn). Generation runs inside a wired-memory
+/// ticket scope so concurrent agents share a GPU budget and can't OOM.
 ///
-/// Build requirement: MLX compiles Metal shaders, so this target must be built with
-/// **xcodebuild + the Metal Toolchain** (`xcodebuild -downloadComponent MetalToolchain`),
-/// not plain `swift build`. Activate by uncommenting the MLX deps in `Package.swift`.
+/// Load uses the 3.x `#huggingFaceLoadModelContainer` macro (default hub client + HF
+/// tokenizer loader). Build with `scripts/build-mlx.sh` (xcodebuild) so MLX's Metal
+/// `default.metallib` is compiled into `mlx-swift_Cmlx.bundle` next to the executable.
 actor MLXBackend: InferenceBackend {
     private let modelId: String
     private let systemPrompt: String
     private let maxTokens: Int
     private var container: ModelContainer?
-    private var sessions: [String: MLXSessionState] = [:]
+    private var sessions: [String: ChatSession] = [:]
+    private let admission = WiredMemoryAdmission()
+    private var activeBytes: Int = 0
 
     init(modelId: String, systemPrompt: String = "You are a focused swarm agent. Answer concisely.", maxTokens: Int = 512) {
         self.modelId = modelId
@@ -32,80 +36,70 @@ actor MLXBackend: InferenceBackend {
     }
 
     func prepare() async throws {
-        // Bound the GPU cache (ChAi pattern). No GPU on the Simulator.
         #if !targetEnvironment(simulator)
         MLX.GPU.set(cacheLimit: 20 * 1024 * 1024)
         #endif
 
-        let modelDir = try Self.modelDirectory(for: modelId)
-        let hub = HubApi(downloadBase: modelDir)
-        let configuration = ModelConfiguration(id: modelId)
-
-        // Download weights if needed; report progress on stderr (data channel stays clean).
         Self.emitStderr(["status": "preparing", "backend": "mlx", "phase": "download", "model": modelId])
-        _ = try await downloadModel(hub: hub, configuration: configuration) { progress in
+        let configuration = ModelConfiguration(id: modelId)
+        // 3.x explicit loader (upgrade.md / SKILL.md): downloader + tokenizer come from the
+        // adapter packages. TODO(verify-symbols): confirm `HubClient.default` /
+        // `TokenizersLoader()` once swift-hf-api-mlx / swift-tokenizers-mlx are approved and
+        // resolved — the exact adapter symbol names differ between adapter package versions.
+        let container = try await LLMModelFactory.shared.loadContainer(
+            from: HubClient.default,
+            using: TokenizersLoader(),
+            configuration: configuration
+        ) { progress in
             Self.emitStderr(["status": "preparing", "backend": "mlx", "phase": "download",
                              "progress": String(format: "%.3f", progress.fractionCompleted)])
         }
+        self.container = container
 
-        // Load the model container (cached for the process lifetime).
-        self.container = try await LLMModelFactory.shared.loadContainer(
-            hub: hub,
-            configuration: configuration
-        ) { _ in }
+        // Size wired-memory tickets to the model's resident footprint (runtime-derived).
+        #if !targetEnvironment(simulator)
+        self.activeBytes = MLX.GPU.snapshot().activeMemory
+        #endif
     }
 
     func generate(session_id: String, prompt: String) async throws -> (text: String, tokens: Int, latency_ms: Int) {
-        guard let container = self.container else {
-            throw MLXBackendError.notPrepared
+        guard let container else { throw MLXBackendError.notPrepared }
+
+        // One ChatSession per agent session — owns its KVCache, reused across turns.
+        let session: ChatSession
+        if let existing = sessions[session_id] {
+            session = existing
+        } else {
+            session = ChatSession(
+                container,
+                instructions: systemPrompt,
+                generateParameters: GenerateParameters(maxTokens: maxTokens, temperature: 0.7, topP: 1.0))
+            sessions[session_id] = session
         }
 
-        // Private memory: append the new user turn to this session's history.
-        var state = sessions[session_id] ?? MLXSessionState(systemPrompt: systemPrompt)
-        state.appendUser(prompt)
-
-        struct GenCtx: Sendable { let messages: [[String: String]]; let maxTokens: Int }
-        let genCtx = GenCtx(messages: state.messages, maxTokens: maxTokens)
         let start = Date()
-
-        let (text, genTokens): (String, Int) = try await container.perform(values: genCtx) { @Sendable context, ctx in
-            let input = try await context.processor.prepare(input: UserInput(messages: ctx.messages))
-            let params = GenerateParameters(maxTokens: ctx.maxTokens, temperature: 0.7, topP: 1.0)
-            let stream = try MLXLMCommon.generate(input: input, parameters: params, context: context)
-            var out = ""
-            var count = 0
-            for await gen in stream {
+        // Admission gating: acquire a wired-memory ticket and generate inside its scope.
+        let (text, genTokens) = try await admission.withAdmission(activeBytes: activeBytes) {
+            var text = ""
+            var tokens = 0
+            for try await gen in session.streamDetails(to: prompt, images: [], videos: []) {
                 if case .chunk(let t) = gen {
-                    out += t
+                    text += t
                 } else if case .info(let info) = gen {
-                    count = info.generationTokenCount
+                    tokens = info.generationTokenCount
                 }
             }
-            return (out, count)
+            return (text, tokens)
         }
-
-        // Persist the assistant turn back into private memory.
-        state.appendAssistant(text)
-        sessions[session_id] = state
-
         let latency = Int(Date().timeIntervalSince(start) * 1000)
         return (text, genTokens, latency)
     }
 
-    /// Weights live under Application Support, namespaced per model id.
-    private static func modelDirectory(for id: String) throws -> URL {
-        let base = FileManager.default
-            .urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("eocon-swarm/MLXModels", isDirectory: true)
-        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
-        return base.appendingPathComponent(id.replacingOccurrences(of: "/", with: "_"), isDirectory: true)
-    }
-
     private static func emitStderr(_ obj: [String: String]) {
         if let data = try? JSONSerialization.data(withJSONObject: obj),
-           var str = String(data: data, encoding: .utf8) {
-            str += "\n"
-            FileHandle.standardError.write(Data(str.utf8))
+           var s = String(data: data, encoding: .utf8) {
+            s += "\n"
+            FileHandle.standardError.write(Data(s.utf8))
         }
     }
 }
@@ -122,11 +116,8 @@ enum MLXBackendError: Error, CustomStringConvertible {
 #else
 
 /// Fallback used by the default `swift build`, where the MLX libraries are not linked.
-/// Keeps `--backend mlx` resolvable and fails *loudly* instead of silently stubbing,
-/// so nobody mistakes a non-MLX build for a working on-device backend.
-///
-/// To get the real backend: uncomment the MLX deps in `Package.swift` and build with
-/// `xcodebuild` + the Metal Toolchain (see `MLXBackend.swift` header and plan step 34).
+/// Fails loudly instead of silently stubbing. Build the real backend with
+/// `scripts/build-mlx.sh` (xcodebuild + Metal Toolchain).
 struct MLXBackend: InferenceBackend {
     let modelId: String
     init(modelId: String, systemPrompt: String = "", maxTokens: Int = 512) {
@@ -143,8 +134,7 @@ struct MLXBackend: InferenceBackend {
 enum MLXBackendError: Error, CustomStringConvertible {
     case notCompiledIn
     var description: String {
-        "MLX backend is not compiled in. Uncomment the mlx-swift / mlx-swift-lm deps in "
-        + "Package.swift and build with xcodebuild + the Metal Toolchain."
+        "MLX backend is not compiled in. Build with scripts/build-mlx.sh (xcodebuild + Metal Toolchain)."
     }
 }
 
