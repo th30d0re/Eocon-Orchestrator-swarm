@@ -108,7 +108,9 @@ impl PtyScreen {
 
     pub fn as_text(&self) -> Text<'_> {
         let total = self.scrollback.len() + self.rows;
-        let offset = self.scrollback_offset.min(total.saturating_sub(self.visible_rows));
+        let offset = self
+            .scrollback_offset
+            .min(total.saturating_sub(self.visible_rows));
         let start = total.saturating_sub(self.visible_rows + offset);
         let end = total.saturating_sub(offset);
 
@@ -262,7 +264,12 @@ impl Perform for PtyScreen {
                     self.cursor_col = col.saturating_sub(1).min(self.cols.saturating_sub(1));
                 }
                 'J' => {
-                    let mode = params.iter().next().and_then(|p| p.first()).copied().unwrap_or(0);
+                    let mode = params
+                        .iter()
+                        .next()
+                        .and_then(|p| p.first())
+                        .copied()
+                        .unwrap_or(0);
                     match mode {
                         0 => {
                             for c in self.cursor_col..self.cols {
@@ -295,7 +302,12 @@ impl Perform for PtyScreen {
                     }
                 }
                 'K' => {
-                    let mode = params.iter().next().and_then(|p| p.first()).copied().unwrap_or(0);
+                    let mode = params
+                        .iter()
+                        .next()
+                        .and_then(|p| p.first())
+                        .copied()
+                        .unwrap_or(0);
                     match mode {
                         0 => {
                             for c in self.cursor_col..self.cols {

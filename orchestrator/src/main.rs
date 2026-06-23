@@ -1,7 +1,7 @@
 use clap::Parser;
 
-use eocon_swarm::{run, CliArgs, Config};
 use eocon_swarm::tui::install_panic_hook;
+use eocon_swarm::{run, CliArgs, Config};
 
 fn main() -> std::process::ExitCode {
     if let Err(e) = color_eyre::install() {

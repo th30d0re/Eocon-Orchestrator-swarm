@@ -79,6 +79,36 @@ pub fn render(app: &App) -> Paragraph<'_> {
                     )]));
                 }
             }
+            AgentOutput::SwiftResult(result) => {
+                let status = if result.success && result.exit_code == 0 {
+                    "success"
+                } else {
+                    "failure"
+                };
+                lines.push(Line::from(vec![
+                    Span::styled("status: ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(
+                        format!("{} (exit {})", status, result.exit_code),
+                        Style::default().fg(if status == "success" {
+                            Color::Green
+                        } else {
+                            Color::Red
+                        }),
+                    ),
+                ]));
+                if !result.output.is_empty() {
+                    lines.push(Line::from(vec![Span::styled(
+                        result.output.clone(),
+                        Style::default().fg(Color::White),
+                    )]));
+                }
+                if !result.error.is_empty() {
+                    lines.push(Line::from(vec![Span::styled(
+                        result.error.clone(),
+                        Style::default().fg(Color::Red),
+                    )]));
+                }
+            }
             AgentOutput::None => {}
         }
     }
@@ -102,5 +132,39 @@ fn state_color(state: AgentLifecycleState) -> Color {
         AgentLifecycleState::Failed => Color::Red,
         AgentLifecycleState::Completed => Color::Green,
         AgentLifecycleState::Preparing => Color::Magenta,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+
+    use crate::app::App;
+
+    use super::*;
+
+    #[test]
+    fn renders_agents_states_and_selection() {
+        let app = App::new(true);
+
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| {
+                frame.render_widget(render(&app), frame.area());
+            })
+            .unwrap();
+
+        let buf = terminal.backend().buffer();
+        let text: String = buf.content.iter().map(|c| c.symbol()).collect();
+
+        assert!(text.contains("planner"));
+        assert!(text.contains("coder"));
+        assert!(text.contains("Thinking"));
+        assert!(text.contains("Acting"));
+        assert!(text.contains("[planner]"));
+        assert!(text.contains(">"));
+        assert!(text.contains("task:"));
     }
 }

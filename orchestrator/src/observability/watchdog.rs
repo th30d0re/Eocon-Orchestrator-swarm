@@ -105,8 +105,10 @@ impl Default for WatchdogState {
 
 impl WatchdogState {
     pub fn record_progress(&mut self, agent_id: &str, tokens: u64) {
-        self.last_progress.insert(agent_id.to_string(), Instant::now());
-        self.tokens_since_progress.insert(agent_id.to_string(), tokens);
+        self.last_progress
+            .insert(agent_id.to_string(), Instant::now());
+        self.tokens_since_progress
+            .insert(agent_id.to_string(), tokens);
     }
 
     pub fn check_stalls(&self) -> Vec<(String, AgentOutcome)> {
@@ -174,6 +176,9 @@ mod tests {
             last_chunk: None,
             generation_error: None,
         };
-        assert_eq!(classifier.classify(&signal), AgentOutcome::Terminal(TerminalKind::Succeeded));
+        assert_eq!(
+            classifier.classify(&signal),
+            AgentOutcome::Terminal(TerminalKind::Succeeded)
+        );
     }
 }

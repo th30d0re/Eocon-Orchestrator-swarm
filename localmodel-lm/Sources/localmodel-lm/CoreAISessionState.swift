@@ -1,5 +1,9 @@
 import Foundation
 
+#if canImport(CoreAI)
+import CoreAI
+#endif
+
 /// Per-`session_id` Core AI inference state — the swarm's private-memory primitive for the
 /// Core AI backend.
 ///
@@ -13,4 +17,10 @@ struct CoreAISessionState {
     var tokenHistory: [Int] = []
     /// Number of decode steps run for this session (telemetry).
     var steps: Int = 0
+
+    #if canImport(CoreAI)
+    /// Mutable KV-cache state arrays carried across decode steps.
+    /// Keys match the names from `function.descriptor.stateNames`.
+    var kvStates: [String: NDArray] = [:]
+    #endif
 }

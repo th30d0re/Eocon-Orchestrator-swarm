@@ -2,6 +2,7 @@ use std::sync::mpsc::Receiver;
 use std::time::Instant;
 
 use crate::agents::runner::RunHandle;
+use crate::agents::swift::SwiftBuildOutput;
 use crate::chat::ChatRequest;
 use crate::policy::policy::RiskLabel;
 use crate::pty_screen::PtyScreen;
@@ -52,7 +53,10 @@ impl AgentRole {
 
     pub fn default_risk_tier(&self) -> RiskLabel {
         match self {
-            AgentRole::Generalist | AgentRole::Planner | AgentRole::Researcher | AgentRole::Synthesizer => RiskLabel::Low,
+            AgentRole::Generalist
+            | AgentRole::Planner
+            | AgentRole::Researcher
+            | AgentRole::Synthesizer => RiskLabel::Low,
             AgentRole::Coder | AgentRole::Reviewer => RiskLabel::Medium,
             AgentRole::SwiftBuilder | AgentRole::SwiftTester => RiskLabel::Medium,
             AgentRole::RiskGuard => RiskLabel::High,
@@ -82,6 +86,7 @@ pub enum AgentOutput {
     None,
     Chat(ChatOutput),
     Pty(PtyOutput),
+    SwiftResult(SwiftBuildOutput),
 }
 
 pub struct ChatOutput {
@@ -157,6 +162,7 @@ impl AgentInstance {
                     let _ = handle.child.kill();
                 }
             }
+            AgentOutput::SwiftResult(_) => {}
             AgentOutput::None => {}
         }
     }

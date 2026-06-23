@@ -74,7 +74,9 @@ pub fn run(config: Config) -> Result<()> {
     let event_handler = EventHandler::new(dummy_rx, 50);
 
     while !app.should_quit {
-        guard.terminal().draw(|frame| ui::render_swarm(frame, &app))?;
+        guard
+            .terminal()
+            .draw(|frame| ui::render_swarm(frame, &app))?;
 
         let action = event_handler.next();
         app.update(action);

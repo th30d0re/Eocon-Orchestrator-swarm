@@ -13,9 +13,24 @@ pub fn seed_interaction(app: &mut App) {
         text: "Synthetic agents and gists loaded.".to_string(),
     });
 
-    let planner = app.swarm_engine.spawn_agent("planner".to_string(), AgentRole::Planner, "anthropic".to_string(), "claude-sonnet-4".to_string());
-    let coder = app.swarm_engine.spawn_agent("coder".to_string(), AgentRole::Coder, "anthropic".to_string(), "claude-sonnet-4".to_string());
-    let reviewer = app.swarm_engine.spawn_agent("reviewer".to_string(), AgentRole::Reviewer, "anthropic".to_string(), "claude-sonnet-4".to_string());
+    let planner = app.swarm_engine.spawn_agent(
+        "planner".to_string(),
+        AgentRole::Planner,
+        "anthropic".to_string(),
+        "claude-sonnet-4".to_string(),
+    );
+    let coder = app.swarm_engine.spawn_agent(
+        "coder".to_string(),
+        AgentRole::Coder,
+        "anthropic".to_string(),
+        "claude-sonnet-4".to_string(),
+    );
+    let reviewer = app.swarm_engine.spawn_agent(
+        "reviewer".to_string(),
+        AgentRole::Reviewer,
+        "anthropic".to_string(),
+        "claude-sonnet-4".to_string(),
+    );
 
     if let Some(a) = app.swarm_engine.get_agent_mut(&planner) {
         a.set_state(AgentLifecycleState::Thinking);
@@ -37,7 +52,10 @@ pub fn seed_interaction(app: &mut App) {
         agent_name: "planner".to_string(),
         claim: "Auth module should use token-based sessions.".to_string(),
         summary: "REST-first, cookie-backed session design.".to_string(),
-        evidence: vec!["Existing API uses JWT".to_string(), "OAuth2 is out of scope".to_string()],
+        evidence: vec![
+            "Existing API uses JWT".to_string(),
+            "OAuth2 is out of scope".to_string(),
+        ],
         source_type: GistSource::ModelClaim,
         peer_rank: Some(0.92),
         status: GistStatus::Verified,

@@ -2,9 +2,10 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use crate::action::Action;
+use crate::agents::swift;
 use crate::policy::config::{load_global_policy, load_user_policy};
 use crate::policy::engine::PolicyEngine;
-use crate::swarm::agent::AgentLifecycleState;
+use crate::swarm::agent::{AgentLifecycleState, AgentOutput, AgentRole};
 use crate::swarm::engine::SwarmEngine;
 use crate::ui::layout::SwarmLayout;
 use crate::ui::theme::Voice;
@@ -34,15 +35,60 @@ pub struct SlashCommand {
 }
 
 pub const SLASH_COMMANDS: &[SlashCommand] = &[
-    SlashCommand { name: "/agent", description: "Manage agents: spawn, pause, resume, edit, restart, unfold, kill, list", takes_arg: true, arg_hint: "<subcommand> [args]" },
-    SlashCommand { name: "/gist", description: "Manage gists: list, unfold, reject", takes_arg: true, arg_hint: "<subcommand> [args]" },
-    SlashCommand { name: "/swarm", description: "Manage swarm: run, stop, reset, status", takes_arg: true, arg_hint: "<subcommand> [args]" },
-    SlashCommand { name: "/policy", description: "Show current policy", takes_arg: false, arg_hint: "" },
-    SlashCommand { name: "/trace", description: "Show trace for an agent", takes_arg: true, arg_hint: "<agent_id>" },
-    SlashCommand { name: "/metrics", description: "Show swarm metrics", takes_arg: false, arg_hint: "" },
-    SlashCommand { name: "/layout", description: "Toggle swarm layout", takes_arg: false, arg_hint: "" },
-    SlashCommand { name: "/help", description: "Show available commands", takes_arg: false, arg_hint: "" },
-    SlashCommand { name: "/quit", description: "Exit orchestrator", takes_arg: false, arg_hint: "" },
+    SlashCommand {
+        name: "/agent",
+        description: "Manage agents: spawn, pause, resume, edit, restart, unfold, kill, list",
+        takes_arg: true,
+        arg_hint: "<subcommand> [args]",
+    },
+    SlashCommand {
+        name: "/gist",
+        description: "Manage gists: list, unfold, reject",
+        takes_arg: true,
+        arg_hint: "<subcommand> [args]",
+    },
+    SlashCommand {
+        name: "/swarm",
+        description: "Manage swarm: run, stop, reset, status",
+        takes_arg: true,
+        arg_hint: "<subcommand> [args]",
+    },
+    SlashCommand {
+        name: "/policy",
+        description: "Show current policy",
+        takes_arg: false,
+        arg_hint: "",
+    },
+    SlashCommand {
+        name: "/trace",
+        description: "Show trace for an agent",
+        takes_arg: true,
+        arg_hint: "<agent_id>",
+    },
+    SlashCommand {
+        name: "/metrics",
+        description: "Show swarm metrics",
+        takes_arg: false,
+        arg_hint: "",
+    },
+    SlashCommand {
+        name: "/layout",
+        description: "Toggle swarm layout",
+        takes_arg: false,
+        arg_hint: "",
+    },
+    SlashCommand {
+        name: "/help",
+        description: "Show available commands",
+        takes_arg: false,
+        arg_hint: "",
+    },
+    SlashCommand {
+        name: "/quit",
+        description: "Exit orchestrator",
+        takes_arg: false,
+        arg_hint: "",
+    },
 ];
 
 pub const FUN_STATUSES: &[&str] = &[
@@ -93,7 +139,8 @@ impl App {
         let project_dir = detect_project_dir(&cwd);
         let global = load_global_policy(&project_dir);
         let user = load_user_policy();
-        let engine = SwarmEngine::new(project_dir.clone()).with_policy(PolicyEngine::new(global, user));
+        let engine =
+            SwarmEngine::new(project_dir.clone()).with_policy(PolicyEngine::new(global, user));
 
         let mut app = Self {
             swarm_phase: SwarmPhase::Idle,
@@ -238,18 +285,26 @@ impl App {
         let cols = cols as usize;
         if rows > 4 && cols > 10 {
             for agent in &mut self.swarm_engine.agents {
-                if let crate::swarm::agent::AgentOutput::Pty(pty) = &mut agent.output {
-                    pty.screen.resize(rows.saturating_sub(4), cols / 2);
+                match &mut agent.output {
+                    AgentOutput::Pty(pty) => {
+                        pty.screen.resize(rows.saturating_sub(4), cols / 2);
+                    }
+                    AgentOutput::SwiftResult(_) | AgentOutput::Chat(_) | AgentOutput::None => {}
                 }
             }
         }
     }
 
     fn drain_chat_responses(&mut self) {
-        let ids: Vec<String> = self.swarm_engine.agents.iter().map(|a| a.id.clone()).collect();
+        let ids: Vec<String> = self
+            .swarm_engine
+            .agents
+            .iter()
+            .map(|a| a.id.clone())
+            .collect();
         for id in ids {
             let maybe_rx = if let Some(agent) = self.swarm_engine.get_agent_mut(&id) {
-                if let crate::swarm::agent::AgentOutput::Chat(chat) = &mut agent.output {
+                if let AgentOutput::Chat(chat) = &mut agent.output {
                     chat.rx.take()
                 } else {
                     None
@@ -289,7 +344,7 @@ impl App {
                     Err(_) => {
                         // Still pending; put receiver back.
                         if let Some(agent) = self.swarm_engine.get_agent_mut(&id) {
-                            if let crate::swarm::agent::AgentOutput::Chat(chat) = &mut agent.output {
+                            if let AgentOutput::Chat(chat) = &mut agent.output {
                                 chat.rx = Some(rx);
                             }
                         }
@@ -300,49 +355,90 @@ impl App {
     }
 
     fn drain_pty_outputs(&mut self) {
-        let ids: Vec<String> = self.swarm_engine.agents.iter().map(|a| a.id.clone()).collect();
+        let ids: Vec<String> = self
+            .swarm_engine
+            .agents
+            .iter()
+            .map(|a| a.id.clone())
+            .collect();
         for id in ids {
             let mut maybe_handle = None;
+            let mut parsed_output: Option<swift::SwiftBuildOutput> = None;
             if let Some(agent) = self.swarm_engine.get_agent_mut(&id) {
-                if let crate::swarm::agent::AgentOutput::Pty(pty) = &mut agent.output {
-                    if let Some(handle) = pty.run_handle.as_mut() {
-                        // drain
-                        loop {
-                            match handle.rx.try_recv() {
-                                Ok(crate::agents::runner::RunnerMsg::Bytes(buf)) => {
-                                    pty.screen.advance(&buf);
+                match &mut agent.output {
+                    AgentOutput::Pty(pty) => {
+                        let is_swift =
+                            matches!(agent.role, AgentRole::SwiftBuilder | AgentRole::SwiftTester);
+                        if let Some(handle) = pty.run_handle.as_mut() {
+                            // drain
+                            loop {
+                                match handle.rx.try_recv() {
+                                    Ok(crate::agents::runner::RunnerMsg::Bytes(buf)) => {
+                                        pty.screen.advance(&buf);
+                                    }
+                                    Ok(crate::agents::runner::RunnerMsg::Error(msg)) => {
+                                        self.interaction.push(InteractionMessage {
+                                            voice: Voice::Error,
+                                            text: msg,
+                                        });
+                                    }
+                                    Err(_) => break,
                                 }
-                                Ok(crate::agents::runner::RunnerMsg::Error(msg)) => {
+                            }
+                        }
+                        if is_swift {
+                            let screen_text: String = pty
+                                .screen
+                                .as_text()
+                                .lines
+                                .iter()
+                                .map(|l| l.to_string())
+                                .collect::<Vec<_>>()
+                                .join("\n");
+                            parsed_output = swift::parse_build_agent_output(&screen_text);
+                        }
+                        if let Some(handle) = pty.run_handle.as_mut() {
+                            if let Ok(Some(status)) = handle.child.try_wait() {
+                                maybe_handle = pty.run_handle.take();
+                                let code = status.exit_code() as i32;
+                                if code == 0 {
+                                    agent.set_state(AgentLifecycleState::Completed);
+                                } else {
+                                    agent.set_state(AgentLifecycleState::Failed);
+                                }
+                                if let Some(gist) = self.swarm_engine.publish_gist(&id) {
                                     self.interaction.push(InteractionMessage {
-                                        voice: Voice::Error,
-                                        text: msg,
+                                        voice: Voice::Gist,
+                                        text: format!(
+                                            "{}: {} (exit {})",
+                                            gist.agent_name, gist.claim, code
+                                        ),
                                     });
                                 }
-                                Err(_) => break,
                             }
                         }
                     }
-                    if let Some(handle) = pty.run_handle.as_mut() {
-                        if let Ok(Some(status)) = handle.child.try_wait() {
-                            maybe_handle = pty.run_handle.take();
-                            let code = status.exit_code() as i32;
-                            if code == 0 {
-                                agent.set_state(AgentLifecycleState::Completed);
-                            } else {
-                                agent.set_state(AgentLifecycleState::Failed);
-                            }
-                            if let Some(gist) = self.swarm_engine.publish_gist(&id) {
-                                self.interaction.push(InteractionMessage {
-                                    voice: Voice::Gist,
-                                    text: format!(
-                                        "{}: {} (exit {})",
-                                        gist.agent_name, gist.claim, code
-                                    ),
-                                });
-                            }
-                        }
-                    }
+                    AgentOutput::SwiftResult(_) | AgentOutput::Chat(_) | AgentOutput::None => {}
                 }
+            }
+            if let Some(output) = parsed_output {
+                let (name, role_display, exit_code) =
+                    if let Some(agent) = self.swarm_engine.get_agent_mut(&id) {
+                        let name = agent.name.clone();
+                        let role_display = agent.role.display_name().to_string();
+                        let exit_code = output.exit_code;
+                        swift::apply_swift_output(agent, output);
+                        (name, role_display, exit_code)
+                    } else {
+                        continue;
+                    };
+                self.interaction.push(InteractionMessage {
+                    voice: Voice::Agent,
+                    text: format!(
+                        "{}: Swift {} result parsed (exit {})",
+                        name, role_display, exit_code
+                    ),
+                });
             }
             drop(maybe_handle);
         }
@@ -358,7 +454,11 @@ impl App {
     }
 
     fn refresh_picker(&mut self) {
-        let filter = self.input_buffer.strip_prefix('/').unwrap_or("").to_lowercase();
+        let filter = self
+            .input_buffer
+            .strip_prefix('/')
+            .unwrap_or("")
+            .to_lowercase();
         self.picker_filtered = SLASH_COMMANDS
             .iter()
             .enumerate()
@@ -368,7 +468,9 @@ impl App {
             })
             .map(|(i, _)| i)
             .collect();
-        self.picker_selected = self.picker_selected.min(self.picker_filtered.len().saturating_sub(1));
+        self.picker_selected = self
+            .picker_selected
+            .min(self.picker_filtered.len().saturating_sub(1));
     }
 
     fn accept_picker(&mut self) {
@@ -400,7 +502,10 @@ impl App {
 pub fn detect_project_dir(cwd: &Path) -> PathBuf {
     let mut cur = cwd;
     loop {
-        if cur.join(".git").is_dir() || cur.join("Package.swift").is_file() || cur.join("Cargo.toml").is_file() {
+        if cur.join(".git").is_dir()
+            || cur.join("Package.swift").is_file()
+            || cur.join("Cargo.toml").is_file()
+        {
             return cur.to_path_buf();
         }
         match cur.parent() {

@@ -173,22 +173,18 @@ fn build_cli_config(req: &ChatRequest) -> Option<CliConfig> {
             let empty_mcp = empty_mcp_config_path();
             Some(CliConfig {
                 program: exe,
-                args: vec![
-                    "--quiet".into(),
-                    "--mcp-config-file".into(),
-                    empty_mcp,
-                ],
+                args: vec!["--quiet".into(), "--mcp-config-file".into(), empty_mcp],
                 prompt_via_arg: false,
                 output_file: None,
             })
         }
         "openai" | "codex" => {
-            let exe = find_exe("codex", &[
-                "/Users/emmanuel/.bun/bin/codex",
-                "/opt/homebrew/bin/codex",
-            ])?;
-            let output_file = std::env::temp_dir()
-                .join(format!("eocon-codex-{}.txt", std::process::id()));
+            let exe = find_exe(
+                "codex",
+                &["/Users/emmanuel/.bun/bin/codex", "/opt/homebrew/bin/codex"],
+            )?;
+            let output_file =
+                std::env::temp_dir().join(format!("eocon-codex-{}.txt", std::process::id()));
             Some(CliConfig {
                 program: exe,
                 args: vec![
@@ -214,10 +210,10 @@ fn build_cli_config(req: &ChatRequest) -> Option<CliConfig> {
             })
         }
         "ollama" => {
-            let exe = find_exe("ollama", &[
-                "/usr/local/bin/ollama",
-                "/opt/homebrew/bin/ollama",
-            ])?;
+            let exe = find_exe(
+                "ollama",
+                &["/usr/local/bin/ollama", "/opt/homebrew/bin/ollama"],
+            )?;
             Some(CliConfig {
                 program: exe,
                 args: vec!["run".into(), model.into()],
@@ -349,7 +345,8 @@ pub fn build_system_prompt(
     );
 
     if orchestrate_body.is_empty() {
-        runtime_context + "\nNo orchestrate.md prompt was found. Use your built-in knowledge to assist."
+        runtime_context
+            + "\nNo orchestrate.md prompt was found. Use your built-in knowledge to assist."
     } else {
         runtime_context + &orchestrate_body
     }

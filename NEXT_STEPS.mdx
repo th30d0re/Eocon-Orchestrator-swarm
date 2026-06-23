@@ -172,3 +172,76 @@ fine, so it is the stale downloader adapter, not the migration.
 - The `#if canImport(...)` SourceKit "Cannot find type 'InferenceBackend'" warnings in the
   editor are false positives from the `#else` branch; trust the actual build.
 - Session logging is expected for code changes (see the iCloud path in §8).
+
+## 11. Status after 2026-06-23 session
+
+Completed items from §9:
+
+- [x] **Production backend decision documented.** Default to verified MLX 2.x on `main`; keep
+      3.x validation on its branch. See `localmodel-lm/README.md`.
+- [x] **MLX 3.x local-dir load path added** in `MLXBackend.swift`. Set `EOCON_MLX_LOCAL_DIR` or
+      pass an absolute/relative directory as `modelId` to bypass the broken `swift-hf-api`
+      downloader and validate `ChatSession` + `KVCache` + wired memory with local weights.
+- [x] **MLX 3.x local-dir load validated** with real fused models from
+      `/Users/emmanuel/Documents/Theory/Redefining_racism/training/fused_models/`:
+  - `RootLedger-8B-Abliterated-Fused` (4-bit Llama 3.1 8B) — loaded + generated.
+  - `RootLedger-Gemma3-12B-v3-Fused` (4-bit Gemma3 12B) — loaded + generated.
+  - `RootLedger-Gemma3-12B-NPBP-Abliterated-v3-v4-Rank32-Iter1000-Fused` — loaded + generated.
+- [x] **Core AI decode loop wired** in `CoreAIBackend.swift`: tokenizer load, descriptor
+      introspection, prefill/decode with KV states, logits sampling, EOS/maxTokens stopping.
+- [x] **Core AI 27.0-SDK build script added:** `localmodel-lm/scripts/build-coreai.sh`.
+- [x] **Orchestrator ↔ sidecar connection fixed** in `src/agents/coreai.rs`: spawns the
+      xcodebuild-produced binary, sets its working directory so the Metal bundle is found,
+      and gates on the stderr `ready` status.
+- [x] **BuildAgent/TestAgent `--json` envelope parsed** in `src/agents/swift.rs` into
+      `AgentOutput::SwiftResult`. Exit code `11` maps to terminal `Failed`.
+- [x] **TestBackend render tests added** for `chat_panel`, `workflow_panel`, `agent_card`, and
+      `gist_widget`.
+
+Verification:
+
+- `cd orchestrator && cargo test` → 18 unit tests + 1 integration test pass.
+- `cd localmodel-lm && swift build` → compiles (fallback paths on the 26.2 SDK).
+- `./scripts/build-mlx.sh` → builds successfully; local-dir load generates real text from the
+  fused RootLedger models.
+
+Remaining:
+
+1. Run `./scripts/build-coreai.sh` on a machine with Xcode-beta + macOS 27.0 SDK + Metal
+   Toolchain, with an `.aimodel` and tokenizer files, to confirm the decode loop.
+2. Wire `LocalModelProvider` into `chat.rs` so `/agent spawn --provider coreai|mlx` actually
+   uses the managed sidecar (currently the provider table maps to bare commands on PATH).
+3. Add orchestrator-level tests that exercise `LocalModelProvider::spawn` with the stub
+   backend to verify the stderr `ready` handshake end-to-end.
+
+## 12. Core AI Gemma3 conversion validation (2026-06-23 follow-up)
+
+The `RootLedger-Gemma3-12B-NPBP-Abliterated-v3-Fused` → Core AI conversion pipeline was
+validated against the original 4-bit MLX checkpoint and HuggingFace:
+
+- **Source weights are good.** The original 4-bit MLX checkpoint generates coherent chat
+  output when prompted with the Gemma-3 chat template.
+- **Dequantization is good.** The FP16/BF16 dequantized checkpoint
+  (`...-Dequantized/`) produces identical generation with HuggingFace
+  `Gemma3ForCausalLM`.
+- **Apple's `Gemma3ForCausalLM` matches HF.** Loading the dequantized weights into
+  `coreai_models.models.macos.gemma3_text.Gemma3ForCausalLM` and using the correct
+  `KVCache` layout yields the same top-20 tokens and coherent chat output.
+- **The "garbage" output was a prompt-formatting issue, not a conversion bug.** Both HF
+  and Apple's model repeat or stall on raw text (e.g. `"hello"`) because the checkpoint is
+  chat-tuned. Applying the Gemma-3 chat template fixes generation.
+
+Key technical notes for future work:
+
+- Apple's `KVCache.create_cache_tensors()` returns shape
+  `(n_layers, batch, n_kv_heads, max_seq_len, head_dim)`. Do **not** use
+  `(batch, n_layers, ...)`.
+- The MLX-fused checkpoint omits `lm_head.weight` because embeddings are tied. Before
+  loading into `Gemma3ForCausalLM`, add `lm_head.weight` as a reference to
+  `model.embed_tokens.weight`.
+- Conversion helper script: `scripts/convert_gemma3_coreai.py`. It uses the standard
+  `coreai_models.export.pipeline` and is structurally sound.
+
+Action item for the Core AI sidecar: ensure the inference path applies the model's chat
+template (from the bundled `tokenizer_config.json`) before encoding the prompt, otherwise
+chat-tuned models will appear to produce garbage.

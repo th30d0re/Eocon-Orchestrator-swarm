@@ -36,6 +36,9 @@ let package = Package(
                 .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
                 .product(name: "MLXLMTokenizers", package: "swift-tokenizers-mlx"),
                 .product(name: "MLXLMHFAPI", package: "swift-hf-api-mlx"),
+                // Tokenizer used directly by the Core AI backend (tensor-in/tensor-out;
+                // Core AI does not ship a tokenizer). The package is already pinned above.
+                .product(name: "Tokenizers", package: "swift-tokenizers"),
             ]
         ),
     ]

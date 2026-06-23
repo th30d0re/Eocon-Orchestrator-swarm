@@ -37,14 +37,22 @@ let args = CommandLine.arguments
 let backendName = args.dropFirst().first ?? "stub"
 let env = ProcessInfo.processInfo.environment
 let mlxModelId = env["EOCON_MLX_MODEL"] ?? "mlx-community/Qwen3-4B-4bit"
+let mlxLocalDir = env["EOCON_MLX_LOCAL_DIR"]
 let coreaiModelPath = env["EOCON_COREAI_MODEL"] ?? ""
+let coreaiTemperature = Float(env["EOCON_COREAI_TEMPERATURE"] ?? "") ?? 0.7
+
+/// The model name surfaced in status JSON. For MLX, prefer the local-dir path when set
+/// so status messages match the actual weights being loaded.
+func mlxDisplayModel() -> String {
+    mlxLocalDir ?? mlxModelId
+}
 
 func makeBackend() -> InferenceBackend {
     switch backendName {
     case "mlx":
         return MLXBackend(modelId: mlxModelId)
     case "coreai":
-        return CoreAIBackend(modelURL: URL(fileURLWithPath: coreaiModelPath))
+        return CoreAIBackend(modelURL: URL(fileURLWithPath: coreaiModelPath), temperature: coreaiTemperature)
     default:
         return StubBackend(name: backendName)
     }
@@ -53,7 +61,7 @@ func makeBackend() -> InferenceBackend {
 let backend = makeBackend()
 
 emitStatus(Status(status: "preparing", backend: backendName, phase: "init",
-                  model: backendName == "mlx" ? mlxModelId : nil, progress: nil, models: nil))
+                  model: backendName == "mlx" ? mlxDisplayModel() : nil, progress: nil, models: nil))
 
 do {
     try await backend.prepare()
@@ -65,7 +73,7 @@ do {
 }
 
 emitStatus(Status(status: "ready", backend: backendName, phase: nil,
-                  model: backendName == "mlx" ? mlxModelId : nil, progress: nil, models: nil))
+                  model: backendName == "mlx" ? mlxDisplayModel() : nil, progress: nil, models: nil))
 
 while let line = readLine() {
     guard let data = line.data(using: .utf8),

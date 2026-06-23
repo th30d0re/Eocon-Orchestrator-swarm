@@ -6,7 +6,9 @@ use crate::chat::spawn_chat_request;
 use crate::observability::metrics::SwarmMetrics;
 use crate::policy::engine::PolicyEngine;
 use crate::pty_screen::PtyScreen;
-use crate::swarm::agent::{AgentInstance, AgentLifecycleState, AgentOutput, AgentRole, ChatOutput, PtyOutput};
+use crate::swarm::agent::{
+    AgentInstance, AgentLifecycleState, AgentOutput, AgentRole, ChatOutput, PtyOutput,
+};
 use crate::swarm::gist::{Gist, GistBoard, GistStatus};
 use crate::swarm::queue::{Task, TaskQueue};
 use crate::swarm::verifier::{draft_to_gist, verify};
@@ -186,10 +188,7 @@ impl SwarmEngine {
             .iter_mut()
             .find(|a| a.id == id)
             .ok_or("agent not found")?;
-        let handle = self
-            .runner
-            .spawn(cmd, size)
-            .map_err(|e| e.to_string())?;
+        let handle = self.runner.spawn(cmd, size).map_err(|e| e.to_string())?;
         let mut screen = PtyScreen::new(size.rows as usize, size.cols as usize);
         screen.resize(size.rows as usize, size.cols as usize);
         agent.output = AgentOutput::Pty(PtyOutput {

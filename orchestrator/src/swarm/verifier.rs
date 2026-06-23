@@ -27,11 +27,7 @@ impl GistDraft {
         if assistant_text.trim().is_empty() {
             return None;
         }
-        let claim = assistant_text
-            .lines()
-            .next()
-            .unwrap_or("")
-            .to_string();
+        let claim = assistant_text.lines().next().unwrap_or("").to_string();
         let summary = if assistant_text.len() > 240 {
             format!("{}...", &assistant_text[..237])
         } else {
@@ -113,7 +109,9 @@ impl ModelSkillChart {
             .max_by(|a, b| {
                 let score_a = a.score - (a.latency_ms as f64 / 10_000.0);
                 let score_b = b.score - (b.latency_ms as f64 / 10_000.0);
-                score_a.partial_cmp(&score_b).unwrap_or(std::cmp::Ordering::Equal)
+                score_a
+                    .partial_cmp(&score_b)
+                    .unwrap_or(std::cmp::Ordering::Equal)
             })
             .map(|e| (e.provider.clone(), e.model.clone()))
     }
@@ -128,7 +126,9 @@ impl ModelSkillChart {
 
 fn skill_chart_path() -> PathBuf {
     let data_dir = dirs::data_dir().unwrap_or_else(|| PathBuf::from("."));
-    data_dir.join("eocon-swarm").join("verifier-skill-chart.json")
+    data_dir
+        .join("eocon-swarm")
+        .join("verifier-skill-chart.json")
 }
 
 /// Rule-based gist verifier.

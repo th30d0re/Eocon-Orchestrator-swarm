@@ -29,19 +29,31 @@ pub fn dispatch(app: &mut App, cmd: &str) {
 
 fn handle_agent(app: &mut App, args: &[&str]) {
     if args.is_empty() {
-        reply(app, "Usage: /agent spawn|list|pause|resume|edit|restart|unfold|kill <args>");
+        reply(
+            app,
+            "Usage: /agent spawn|list|pause|resume|edit|restart|unfold|kill <args>",
+        );
         return;
     }
     match args[0] {
         "spawn" => {
             if args.len() < 2 {
-                reply(app, "Usage: /agent spawn <name> [--role <role>] [--provider <p>] [--model <m>]");
+                reply(
+                    app,
+                    "Usage: /agent spawn <name> [--role <role>] [--provider <p>] [--model <m>]",
+                );
                 return;
             }
             let name = args[1].to_string();
             let mut role = AgentRole::Generalist;
-            let mut provider = app.current_provider.clone().unwrap_or_else(|| "anthropic".to_string());
-            let mut model = app.current_model.clone().unwrap_or_else(|| "claude-sonnet-4".to_string());
+            let mut provider = app
+                .current_provider
+                .clone()
+                .unwrap_or_else(|| "anthropic".to_string());
+            let mut model = app
+                .current_model
+                .clone()
+                .unwrap_or_else(|| "claude-sonnet-4".to_string());
             let mut i = 2;
             while i + 1 < args.len() {
                 match args[i] {
@@ -52,16 +64,28 @@ fn handle_agent(app: &mut App, args: &[&str]) {
                 }
                 i += 2;
             }
-            let id = app.swarm_engine.spawn_agent(name.clone(), role, provider, model);
+            let id = app
+                .swarm_engine
+                .spawn_agent(name.clone(), role, provider, model);
             reply(app, &format!("Spawned agent {} ({})", name, id));
         }
         "list" => {
             if app.swarm_engine.agents.is_empty() {
                 reply(app, "No agents.");
             } else {
-                let lines: Vec<String> = app.swarm_engine.agents
+                let lines: Vec<String> = app
+                    .swarm_engine
+                    .agents
                     .iter()
-                    .map(|a| format!("{} [{}] {:?} - {}", a.name, a.id, a.state, a.current_task.as_deref().unwrap_or("idle")))
+                    .map(|a| {
+                        format!(
+                            "{} [{}] {:?} - {}",
+                            a.name,
+                            a.id,
+                            a.state,
+                            a.current_task.as_deref().unwrap_or("idle")
+                        )
+                    })
                     .collect();
                 for line in lines {
                     reply(app, &line);
@@ -155,9 +179,20 @@ fn handle_gist(app: &mut App, args: &[&str]) {
     }
     match args[0] {
         "list" => {
-            let lines: Vec<String> = app.swarm_engine.gist_board.gists
+            let lines: Vec<String> = app
+                .swarm_engine
+                .gist_board
+                .gists
                 .iter()
-                .map(|g| format!("{} [{}] {} - {}", g.id, g.agent_name, g.status_string(), g.claim))
+                .map(|g| {
+                    format!(
+                        "{} [{}] {} - {}",
+                        g.id,
+                        g.agent_name,
+                        g.status_string(),
+                        g.claim
+                    )
+                })
                 .collect();
             for line in lines {
                 reply(app, &line);
@@ -168,7 +203,11 @@ fn handle_gist(app: &mut App, args: &[&str]) {
                 reply(app, "Usage: /gist unfold <id>");
                 return;
             }
-            if let Some(text) = app.swarm_engine.gist_board.unfold(args[1], crate::swarm::gist::UnfoldLevel::Evidence) {
+            if let Some(text) = app
+                .swarm_engine
+                .gist_board
+                .unfold(args[1], crate::swarm::gist::UnfoldLevel::Evidence)
+            {
                 reply(app, &text);
             } else {
                 reply(app, &format!("Gist {} not found", args[1]));
@@ -215,11 +254,15 @@ fn handle_swarm(app: &mut App, args: &[&str]) {
             reply(app, "Swarm reset.");
         }
         "status" => {
-            reply(app, &format!("Phase: {:?}, Agents: {}, Verified gists: {}",
-                app.swarm_phase,
-                app.swarm_engine.agents.len(),
-                app.swarm_engine.gist_board.verified().len()
-            ));
+            reply(
+                app,
+                &format!(
+                    "Phase: {:?}, Agents: {}, Verified gists: {}",
+                    app.swarm_phase,
+                    app.swarm_engine.agents.len(),
+                    app.swarm_engine.gist_board.verified().len()
+                ),
+            );
         }
         _ => reply(app, "Unknown /swarm subcommand."),
     }
@@ -232,14 +275,26 @@ fn handle_policy(app: &mut App) {
     for p in &global.forbidden_patterns {
         text.push_str(&format!("  - {}\n", p));
     }
-    text.push_str(&format!("Max allowed risk: {:?}\n", global.max_allowed_risk));
-    text.push_str(&format!("User autonomous risk: {:?}\n", user.max_autonomous_risk));
+    text.push_str(&format!(
+        "Max allowed risk: {:?}\n",
+        global.max_allowed_risk
+    ));
+    text.push_str(&format!(
+        "User autonomous risk: {:?}\n",
+        user.max_autonomous_risk
+    ));
     reply(app, &text);
 }
 
 fn handle_trace(app: &mut App, args: &[&str]) {
     let id = args.first().copied().unwrap_or("root");
-    reply(app, &format!("Trace for {}: (in-memory trace tree exported to stderr on exit)", id));
+    reply(
+        app,
+        &format!(
+            "Trace for {}: (in-memory trace tree exported to stderr on exit)",
+            id
+        ),
+    );
 }
 
 fn handle_metrics(app: &mut App) {

@@ -14,11 +14,20 @@ pub fn render(app: &App) -> Paragraph<'_> {
     let line = Line::from(vec![
         Span::styled("Eocon Swarm", Style::default().fg(Color::White)),
         Span::raw(" | "),
-        Span::styled(format!("layout: {}", layout), Style::default().fg(Color::Cyan)),
+        Span::styled(
+            format!("layout: {}", layout),
+            Style::default().fg(Color::Cyan),
+        ),
         Span::raw(" | "),
-        Span::styled(format!("agents: {}", agent_count), Style::default().fg(Color::Cyan)),
+        Span::styled(
+            format!("agents: {}", agent_count),
+            Style::default().fg(Color::Cyan),
+        ),
         Span::raw(" | "),
-        Span::styled(format!("gists: {}", gist_count), Style::default().fg(Color::Cyan)),
+        Span::styled(
+            format!("gists: {}", gist_count),
+            Style::default().fg(Color::Cyan),
+        ),
     ]);
 
     Paragraph::new(line)

@@ -28,7 +28,12 @@ impl TraceSpan {
         self.attributes.insert(key.to_string(), value);
     }
 
-    pub fn start_child(&mut self, id: String, name: String, agent_id: Option<String>) -> &mut TraceSpan {
+    pub fn start_child(
+        &mut self,
+        id: String,
+        name: String,
+        agent_id: Option<String>,
+    ) -> &mut TraceSpan {
         self.children.push(TraceSpan::new(id, name, agent_id));
         self.children.last_mut().unwrap()
     }
@@ -52,13 +57,12 @@ impl serde::Serialize for TraceSpan {
         state.serialize_field("id", &self.id)?;
         state.serialize_field("name", &self.name)?;
         state.serialize_field("agent_id", &self.agent_id)?;
-        state.serialize_field(
-            "started_at_ms",
-            &self.started_at.elapsed().as_millis(),
-        )?;
+        state.serialize_field("started_at_ms", &self.started_at.elapsed().as_millis())?;
         state.serialize_field(
             "finished_at_ms",
-            &self.finished_at.map(|_| self.started_at.elapsed().as_millis()),
+            &self
+                .finished_at
+                .map(|_| self.started_at.elapsed().as_millis()),
         )?;
         state.serialize_field("attributes", &self.attributes)?;
         state.serialize_field("children", &self.children)?;

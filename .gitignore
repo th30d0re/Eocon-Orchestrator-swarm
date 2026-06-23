@@ -7,6 +7,9 @@ DerivedData/
 *.xcodeproj/xcuserdata/
 *.xcodeproj/project.xcworkspace/xcuserdata/
 
+# Python venvs (Core AI model conversion tooling)
+.venv*/
+
 # macOS
 .DS_Store
 

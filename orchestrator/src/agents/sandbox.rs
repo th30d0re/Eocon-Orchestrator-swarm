@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
 use crate::agents::runner::{AgentCmd, AgentRunner, RunHandle, RunnerError};
-use portable_pty::PtySize;
 use crate::policy::policy::RiskLabel;
+use portable_pty::PtySize;
 
 /// v2 placeholder: Apple Container Machine sandbox configuration.
 #[derive(Debug, Clone)]

@@ -30,7 +30,10 @@ impl TaskQueue {
     }
 
     pub fn pending(&self) -> Vec<&Task> {
-        self.tasks.iter().filter(|t| t.claimed_by.is_none()).collect()
+        self.tasks
+            .iter()
+            .filter(|t| t.claimed_by.is_none())
+            .collect()
     }
 
     pub fn claimed_by(&self, agent_id: &str) -> Vec<&Task> {

@@ -10,12 +10,13 @@ pub fn render<'a>(agent: &AgentInstance, is_selected: bool) -> Paragraph<'a> {
     let state_str = state_label(agent.state);
     let state_color = state_color(agent.state);
     let elapsed = agent.elapsed_secs();
-    let task = agent
-        .current_task
-        .as_deref()
-        .unwrap_or("idle");
+    let task = agent.current_task.as_deref().unwrap_or("idle");
 
-    let border_color = if is_selected { Color::Cyan } else { Color::DarkGray };
+    let border_color = if is_selected {
+        Color::Cyan
+    } else {
+        Color::DarkGray
+    };
 
     let lines = vec![
         Line::from(vec![
@@ -32,9 +33,17 @@ pub fn render<'a>(agent: &AgentInstance, is_selected: bool) -> Paragraph<'a> {
         ]),
         Line::from(vec![
             Span::styled("state: ", Style::default().fg(Color::DarkGray)),
-            Span::styled(state_str, Style::default().fg(state_color).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                state_str,
+                Style::default()
+                    .fg(state_color)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" | "),
-            Span::styled(format!("{:02}:{:02}", elapsed / 60, elapsed % 60), Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                format!("{:02}:{:02}", elapsed / 60, elapsed % 60),
+                Style::default().fg(Color::DarkGray),
+            ),
         ]),
         Line::from(vec![
             Span::styled("task: ", Style::default().fg(Color::DarkGray)),
@@ -42,12 +51,11 @@ pub fn render<'a>(agent: &AgentInstance, is_selected: bool) -> Paragraph<'a> {
         ]),
     ];
 
-    Paragraph::new(lines)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(border_color)),
-        )
+    Paragraph::new(lines).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(border_color)),
+    )
 }
 
 fn state_label(state: AgentLifecycleState) -> &'static str {
@@ -71,5 +79,67 @@ fn state_color(state: AgentLifecycleState) -> Color {
         AgentLifecycleState::Failed => Color::Red,
         AgentLifecycleState::Completed => Color::Green,
         AgentLifecycleState::Preparing => Color::Magenta,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+
+    use crate::swarm::agent::{AgentInstance, AgentLifecycleState, AgentRole};
+
+    use super::*;
+
+    fn sample_agent() -> AgentInstance {
+        let mut agent = AgentInstance::new(
+            "a1".to_string(),
+            "alpha".to_string(),
+            AgentRole::Coder,
+            "anthropic".to_string(),
+            "claude".to_string(),
+        );
+        agent.set_state(AgentLifecycleState::Acting);
+        agent.current_task = Some("fix login flow".to_string());
+        agent
+    }
+
+    #[test]
+    fn renders_unselected_agent_card() {
+        let agent = sample_agent();
+        let backend = TestBackend::new(40, 8);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| {
+                frame.render_widget(render(&agent, false), frame.area());
+            })
+            .unwrap();
+
+        let buf = terminal.backend().buffer();
+        let text: String = buf.content.iter().map(|c| c.symbol()).collect();
+
+        assert!(text.contains("alpha"));
+        assert!(text.contains("[coder]"));
+        assert!(text.contains("Acting"));
+        assert!(text.contains("fix login flow"));
+    }
+
+    #[test]
+    fn renders_selected_agent_card() {
+        let agent = sample_agent();
+        let backend = TestBackend::new(40, 8);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| {
+                frame.render_widget(render(&agent, true), frame.area());
+            })
+            .unwrap();
+
+        let buf = terminal.backend().buffer();
+        let text: String = buf.content.iter().map(|c| c.symbol()).collect();
+
+        assert!(text.contains("alpha"));
+        assert!(text.contains("Acting"));
+        assert!(text.contains("fix login flow"));
     }
 }

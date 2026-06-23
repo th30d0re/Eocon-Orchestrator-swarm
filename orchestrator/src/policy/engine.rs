@@ -45,7 +45,9 @@ impl PolicyEngine {
                 risk_label: risk,
                 reasoning: "Risk exceeds user-configured autonomous threshold; requires approval."
                     .to_string(),
-                guided_alternative: Some("Ask the user for explicit approval before acting.".to_string()),
+                guided_alternative: Some(
+                    "Ask the user for explicit approval before acting.".to_string(),
+                ),
             };
         }
 

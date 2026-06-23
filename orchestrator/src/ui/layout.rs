@@ -18,13 +18,14 @@ impl SwarmLayout {
     }
 }
 
-pub fn compute_swarm(
-    area: Rect,
-    layout: SwarmLayout,
-) -> (Option<Rect>, Option<Rect>, Rect, Rect) {
+pub fn compute_swarm(area: Rect, layout: SwarmLayout) -> (Option<Rect>, Option<Rect>, Rect, Rect) {
     let main_chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(3), Constraint::Length(1), Constraint::Length(1)])
+        .constraints([
+            Constraint::Min(3),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
         .split(area);
 
     let top = main_chunks[0];

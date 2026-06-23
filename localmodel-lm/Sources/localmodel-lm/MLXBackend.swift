@@ -40,19 +40,54 @@ actor MLXBackend: InferenceBackend {
         MLX.GPU.set(cacheLimit: 20 * 1024 * 1024)
         #endif
 
-        Self.emitStderr(["status": "preparing", "backend": "mlx", "phase": "download", "model": modelId])
-        let configuration = ModelConfiguration(id: modelId)
-        // 3.x explicit loader (upgrade.md / SKILL.md): downloader + tokenizer come from the
-        // adapter packages. TODO(verify-symbols): confirm `HubClient.default` /
-        // `TokenizersLoader()` once swift-hf-api-mlx / swift-tokenizers-mlx are approved and
-        // resolved — the exact adapter symbol names differ between adapter package versions.
-        let container = try await LLMModelFactory.shared.loadContainer(
-            from: HubClient.default,
-            using: TokenizersLoader(),
-            configuration: configuration
-        ) { progress in
-            Self.emitStderr(["status": "preparing", "backend": "mlx", "phase": "download",
-                             "progress": String(format: "%.3f", progress.fractionCompleted)])
+        let env = ProcessInfo.processInfo.environment
+        let localDirOverride = env["EOCON_MLX_LOCAL_DIR"]
+
+        let container: ModelContainer
+        if let localDirOverride, !localDirOverride.isEmpty {
+            let localURL: URL
+            if localDirOverride.hasPrefix("file://") {
+                localURL = URL(string: localDirOverride)!
+            } else {
+                localURL = URL(fileURLWithPath: localDirOverride)
+            }
+            guard (localURL as NSURL).checkResourceIsReachableAndReturnError(nil) else {
+                throw MLXBackendError.localDirectoryNotFound(localDirOverride)
+            }
+            Self.emitStderr(["status": "preparing", "backend": "mlx", "phase": "local-load",
+                             "model": localDirOverride])
+            container = try await LLMModelFactory.shared.loadContainer(
+                from: localURL,
+                using: TokenizersLoader()
+            )
+        } else if isLocalDirectory(modelId) {
+            let localURL: URL
+            if modelId.hasPrefix("file://") {
+                localURL = URL(string: modelId)!
+            } else {
+                localURL = URL(fileURLWithPath: modelId)
+            }
+            Self.emitStderr(["status": "preparing", "backend": "mlx", "phase": "local-load",
+                             "model": modelId])
+            container = try await LLMModelFactory.shared.loadContainer(
+                from: localURL,
+                using: TokenizersLoader()
+            )
+        } else {
+            Self.emitStderr(["status": "preparing", "backend": "mlx", "phase": "download", "model": modelId])
+            let configuration = ModelConfiguration(id: modelId)
+            // 3.x explicit loader (upgrade.md / SKILL.md): downloader + tokenizer come from the
+            // adapter packages. TODO(verify-symbols): confirm `HubClient.default` /
+            // `TokenizersLoader()` once swift-hf-api-mlx / swift-tokenizers-mlx are approved and
+            // resolved — the exact adapter symbol names differ between adapter package versions.
+            container = try await LLMModelFactory.shared.loadContainer(
+                from: HubClient.default,
+                using: TokenizersLoader(),
+                configuration: configuration
+            ) { progress in
+                Self.emitStderr(["status": "preparing", "backend": "mlx", "phase": "download",
+                                 "progress": String(format: "%.3f", progress.fractionCompleted)])
+            }
         }
         self.container = container
 
@@ -60,6 +95,15 @@ actor MLXBackend: InferenceBackend {
         #if !targetEnvironment(simulator)
         self.activeBytes = MLX.GPU.snapshot().activeMemory
         #endif
+    }
+
+    private func isLocalDirectory(_ value: String) -> Bool {
+        if value.hasPrefix("/") || value.hasPrefix("./") || value.hasPrefix("~/") || value.hasPrefix("file://") {
+            return true
+        }
+        let url = URL(fileURLWithPath: value)
+        var isDir: ObjCBool = false
+        return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) && isDir.boolValue
     }
 
     func generate(session_id: String, prompt: String) async throws -> (text: String, tokens: Int, latency_ms: Int) {
@@ -115,9 +159,14 @@ actor MLXBackend: InferenceBackend {
 
 enum MLXBackendError: Error, CustomStringConvertible {
     case notPrepared
+    case localDirectoryNotFound(String)
+
     var description: String {
         switch self {
-        case .notPrepared: return "MLX backend used before prepare() completed"
+        case .notPrepared:
+            return "MLX backend used before prepare() completed"
+        case .localDirectoryNotFound(let path):
+            return "MLX local model directory not found: \(path)"
         }
     }
 }

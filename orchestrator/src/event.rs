@@ -63,7 +63,9 @@ fn map_key(key: KeyEvent) -> Action {
         KeyCode::PageUp => Action::ScrollUp,
         KeyCode::PageDown => Action::ScrollDown,
         KeyCode::F(1) => Action::ToggleHelp,
-        KeyCode::Char('l') if key.modifiers.contains(KeyModifiers::CONTROL) => Action::ToggleSwarmLayout,
+        KeyCode::Char('l') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            Action::ToggleSwarmLayout
+        }
         KeyCode::Char(c) => Action::InputChar(c),
         _ => Action::Tick,
     }
