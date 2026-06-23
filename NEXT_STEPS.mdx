@@ -1,0 +1,174 @@
+---
+name: Eocon Orchestrator Swarm — Handoff & Next Steps
+description: Cold-start handoff for continuing the Eocon swarm orchestrator + on-device sidecar work
+updatedAt: '2026-06-23'
+status: active
+audience: any model/engineer picking up this repo with no prior context
+---
+
+# Eocon Orchestrator Swarm — Handoff & Next Steps
+
+> Read this top-to-bottom before touching code. It is written for someone with **zero**
+> prior context. Trust the file paths and verified facts; re-verify anything marked TODO.
+
+## 1. What this project is
+
+A Rust terminal UI (`eocon-swarm`) that runs multiple specialist agents with **private
+memory**, sharing only verified **gists** to a group board, plus an on-device inference
+**sidecar** (`localmodel-lm`, Swift) that serves local models (MLX today, Core AI scaffolded).
+Full design spec: `plans/eocon_swarm_private_memory_e9b065ff.plan.mdx` (in this repo).
+
+## 2. Repo + branches (this is a STANDALONE git repo)
+
+Repo root: `/Users/emmanuel/Dev/Tools/Eocon-Orchestrator-swarm` (its own `.git`).
+History note: the user's home dir was accidentally a git repo; it was removed. Do **not**
+re-init git anywhere above this directory.
+
+| Branch | State |
+|--------|-------|
+| `main` | **Verified baseline.** Rust orchestrator (10/10 tests pass) + sidecar with the **2.x MLX backend proven end-to-end** (real HF download→load→generate). Use for production. Commit `d246462`. |
+| `mlx-3x-migration` | **WIP.** Migrates the MLX backend to mlx-swift-lm 3.x (ChatSession + KVCache + wired-memory admission). Compiles + activates but the HF downloader adapter stalls (see §6). Commits `abacddc`, `e94302c`. |
+
+## 3. Layout
+
+```
+orchestrator/            # Rust TUI crate `eocon-swarm`
+  src/swarm/             # engine, agent, memory, gist, verifier, queue, commands
+  src/policy/            # PACT policy (classify→act), RiskLabel
+  src/observability/     # trace, metrics, watchdog (OutcomeClassifier/TerminalKind)
+  src/agents/            # runner (AgentRunner trait + PtyRunner), swift, coreai, sandbox(v2)
+  src/ui/                # ratatui panels
+localmodel-lm/           # Swift sidecar (SwiftPM)
+  Sources/localmodel-lm/
+    main.swift           # JSON-lines loop; --backend stub|coreai|mlx dispatch
+    InferenceBackend.swift   # protocol + StubBackend
+    MLXBackend.swift     # real MLX (2.x on main / 3.x on branch), #if canImport(MLXLMCommon)
+    CoreAIBackend.swift  # Core AI scaffold, #if canImport(CoreAI)
+    CoreAISessionState.swift
+    WiredMemoryAdmission.swift   # 3.x branch only
+  scripts/build-mlx.sh   # xcodebuild wrapper (REQUIRED for MLX — see §5)
+plans/                   # design spec + Apple containerization port plan
+```
+
+## 4. How to build & run
+
+### Rust orchestrator
+```bash
+cd orchestrator
+cargo test        # 10/10 pass
+cargo run -- --swarm-demo     # UI demo, no model cost
+./target/debug/eocon-swarm --help
+```
+
+### Sidecar — stub (no ML deps, fast)
+```bash
+cd localmodel-lm
+swift build
+printf '{"session_id":"s1","prompt":"hi"}\n' | ./.build/debug/localmodel-lm stub
+# stdout = response JSON; stderr = status JSON (preparing/ready). Keep them separate.
+```
+
+### Sidecar — MLX (REAL on-device inference)
+```bash
+cd localmodel-lm
+./scripts/build-mlx.sh        # xcodebuild — NOT `swift build` (see §5)
+BIN=.build/xcode/Build/Products/Debug/localmodel-lm
+printf '{"session_id":"s1","prompt":"hello"}\n' \
+  | EOCON_MLX_MODEL=mlx-community/Qwen2.5-0.5B-Instruct-4bit "$BIN" mlx
+```
+On `main` (2.x) this downloads + generates for real (verified). On `mlx-3x-migration` it
+builds + activates but the download stalls (§6).
+
+### Protocol (sidecar)
+- stdin: `{"session_id","prompt","role?"}` (one JSON per line)
+- stdout: `{"session_id","text","tokens","latency_ms"}` or `{"session_id","error"}`
+- stderr: `{"status":"preparing|ready|error", ...}` — the Rust provider gates spawn on a
+  stderr `ready`. **Never** print status to stdout (it corrupts the data channel).
+- env: `EOCON_MLX_MODEL` (HF id), `EOCON_COREAI_MODEL` (path to .aimodel)
+
+## 5. The #1 landmine: MLX needs xcodebuild, not `swift build`
+
+`swift build` compiles the Swift/C++ but does **not** compile MLX's Metal shaders, so the
+binary dies at runtime with `Failed to load the default metallib`. `xcodebuild` (via
+`scripts/build-mlx.sh`) emits `mlx-swift_Cmlx.bundle/Contents/Resources/default.metallib`
+next to the executable. **The binary and that bundle must travel together**; the orchestrator
+must spawn the xcodebuild product, not the `swift build` one. Metal Toolchain is required
+(already installed on the dev machine). MLX cannot run in the iOS Simulator.
+
+## 6. 3.x migration status (branch `mlx-3x-migration`) — READ BEFORE CONTINUING
+
+**Done & compiling** (swift build + xcodebuild, against mlx-swift-lm 3.31.3 / mlx-swift 0.31.4):
+- `MLXBackend` uses one `ChatSession` per `session_id` → isolated `KVCache`, true cross-turn
+  reuse (replaces 2.x per-turn re-prepare).
+- `WiredMemoryAdmission` uses `WiredSumPolicy(cap: nil)` → GPU budget derived at runtime
+  (scales 64 GB → 512 GB). Inference brackets with `ticket.start()/end()` (NOT
+  `withWiredLimit { }` — the closure captures the actor-isolated session and Swift 6 rejects
+  sending it into the nonisolated method).
+
+**Fragile pins (the documented 3.x HF adapters break against their own latest deps):**
+- `swift-tokenizers` pinned `0.5.0..<0.6.0` — `swift-tokenizers-mlx 0.3.0` calls non-throwing
+  `encode/decode`; they became throwing in 0.6+.
+- `swift-hf-api` pinned `0.2.2..<0.3.0` — `swift-hf-api-mlx 0.2.0` uses `HubClient`, renamed
+  `HFClient` in 0.4.x.
+
+**BLOCKER:** with the pinned-old `swift-hf-api 0.2.x`, `HubClient.default` **stalls the model
+download at ~4%** (exit 124 on timeout). The 2.x `HubApi` path downloads the *same* model
+fine, so it is the stale downloader adapter, not the migration.
+
+**Two ways forward for 3.x (pick one):**
+1. **Local-dir load (recommended to finish validation fast):** bypass `HubClient` with the
+   local loader `loadContainer(from: directory, using: TokenizersLoader())` (in
+   `swift-tokenizers-mlx`'s `Convenience.swift`). Pre-download the model with the 2.x path (or
+   `huggingface-cli`) and point at the local dir. This validates ChatSession + KV + wired
+   memory end-to-end without the broken downloader.
+2. **Wait for / switch downloader:** track healthier `swift-hf-api-mlx` / `swift-hf-api`
+   releases, or write a tiny `Downloader` conformance backed by the working swift-transformers
+   `HubApi` (2.x) and pass it to `loadContainer(from:using:)`.
+
+## 7. Core AI backend status (`CoreAIBackend.swift`)
+
+- Real API wired per Apple docs: `AIModel(contentsOf:)` (async, specializes) →
+  `loadFunction(named:)` → `run(inputs:)`. Behind `#if canImport(CoreAI)`, fail-loud `#else`.
+- **Now buildable:** the macOS 27.0 SDK is installed in **Xcode-beta (Xcode 27.0)** and ships
+  `CoreAI.framework`. Build with `DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer`
+  (the default `xcode-select` is still Xcode 26.3, which lacks CoreAI). Add a 27.0 build path
+  to `scripts/` or use `xcodebuild -destination 'platform=macOS' DEVELOPER_DIR=...`.
+- **TODO (model-specific, currently throws `decodeLoopNotImplemented`):** the raw Core AI API
+  is tensor-in/tensor-out. A text LLM needs: tokenizer.encode → input `NDArray`; an
+  autoregressive loop calling `run(inputs:states:)` carrying KV **states** across steps;
+  sampling from logits; tokenizer.decode. Per-session state lives in `CoreAISessionState`.
+
+## 8. Verified environment facts (re-check if the machine changed)
+
+- Apple `container` CLI **v1.0.0** installed; a `tulu-video-mcp` container machine runs. The
+  v2 sandbox (`src/agents/sandbox.rs`) targets this; VM-per-risk-tier topology. **No GPU/ANE
+  in the Linux guest** → the inference sidecar stays host-side.
+- MLX 2.x verified end-to-end on `main` with `mlx-community/Qwen2.5-0.5B-Instruct-4bit`.
+- Reference working MLX app (2.x patterns): `/Users/emmanuel/Dev/Apps/ChAi/ChAi_3`
+  (`Managers/MLXModelManager.swift`).
+- Session logs (rounds 1–10): `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Root/AI Session Logs/`.
+
+## 9. Prioritized next steps
+
+1. **Decide production backend.** Default to 2.x (verified). Keep 3.x on its branch.
+2. **Finish 3.x validation** via §6 option 1 (local-dir load) to prove ChatSession + wired
+   memory generate for real, decoupled from the broken downloader.
+3. **Wire the Core AI decode loop** (§7) and add a 27.0-SDK build path; flip `--backend coreai`
+   from fail-loud to real specialization + generation.
+4. **Connect orchestrator ↔ sidecar:** verify `src/agents/coreai.rs` spawns the xcodebuild
+   sidecar product (binary + metallib bundle together) and gates on the stderr `ready`.
+5. **Tests:** add the widget `TestBackend` render tests called for in plan step 31 (currently
+   10 unit/integration tests; no UI render tests).
+6. **Parse the BuildAgent/TestAgent `--json` envelope** in `src/agents/swift.rs` into
+   `AgentOutput` (today it spawns via PTY and relies on the watchdog exit-code path).
+
+## 10. Working agreements / gotchas
+
+- Commit only when asked; this repo's default branch is `main`. End commit messages with the
+  Co-Authored-By trailer.
+- Don't `git add -A` from above this repo. `.gitignore` already excludes `target/`, `.build/`.
+- `swift build` is fine for the **stub/coreai** paths and for fast Swift type-checking; use
+  **xcodebuild** for any real MLX run.
+- The `#if canImport(...)` SourceKit "Cannot find type 'InferenceBackend'" warnings in the
+  editor are false positives from the `#else` branch; trust the actual build.
+- Session logging is expected for code changes (see the iCloud path in §8).
