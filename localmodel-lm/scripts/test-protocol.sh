@@ -20,6 +20,15 @@ FAIL=0
 ok()   { echo "  ok  - $1"; PASS=$((PASS+1)); }
 bad()  { echo "  FAIL- $1"; FAIL=$((FAIL+1)); }
 
+# `swift build` needs a FULL Xcode, not the CommandLineTools. If xcode-select points at
+# CommandLineTools (e.g. Xcode.app was removed), find an Xcode and use it for this build.
+if xcode-select -p 2>/dev/null | grep -q "CommandLineTools" && [ -z "${DEVELOPER_DIR:-}" ]; then
+    for xc in /Applications/Xcode.app /Applications/Xcode-beta.app; do
+        if [ -d "$xc/Contents/Developer" ]; then export DEVELOPER_DIR="$xc/Contents/Developer"; break; fi
+    done
+    [ -n "${DEVELOPER_DIR:-}" ] && echo "==> using DEVELOPER_DIR=$DEVELOPER_DIR (xcode-select was CommandLineTools)"
+fi
+
 echo "==> building stub (swift build)"
 if ! swift build >/tmp/proto_build.log 2>&1; then
     echo "BUILD FAILED — see /tmp/proto_build.log"; tail -20 /tmp/proto_build.log; exit 1
