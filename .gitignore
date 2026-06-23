@@ -9,6 +9,13 @@ DerivedData/
 
 # Python venvs (Core AI model conversion tooling)
 .venv*/
+.deps/
+
+# Model weights & Core AI bundles — never commit these (GBs); see HANDOFF_ULTRA.md
+*.aimodel/
+*.safetensors
+RootLedger-*-CoreAI/
+*-Dequantized/
 
 # macOS
 .DS_Store
