@@ -14,6 +14,16 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# Pin to the beta toolchain: this stack targets the 27.x (Beta) SDK on a Beta OS, and the
+# build does not work without it. Prefer Xcode-beta; fall back to Xcode.app if that's the
+# 27.x install on this machine. (Same convention as build-coreai.sh.)
+if [ -z "${DEVELOPER_DIR:-}" ]; then
+    for xc in /Applications/Xcode-beta.app /Applications/Xcode.app; do
+        if [ -d "$xc/Contents/Developer" ]; then export DEVELOPER_DIR="$xc/Contents/Developer"; break; fi
+    done
+fi
+if [ -n "${DEVELOPER_DIR:-}" ]; then echo "Using DEVELOPER_DIR=$DEVELOPER_DIR"; fi
+
 DERIVED="${DERIVED:-.build/xcode}"
 
 echo "Building localmodel-lm (MLX) via xcodebuild …"

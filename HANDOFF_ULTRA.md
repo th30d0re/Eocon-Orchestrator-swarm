@@ -11,7 +11,10 @@ on the laptop.
    `Eocon/RootLedger-Gemma3-12B-NPBP-Abliterated-v3-Fused`. The agent downloads it (step 1).
    Because it's private, you must have HF read access — log in with a token that can read it
    (or have Eocon add you as a collaborator).
-2. **Xcode 27** (or Xcode-beta) installed — needed to build the Core AI test program.
+2. **macOS 27 (Beta) + Xcode 27 / Xcode-beta.** This is the hard one: Core AI only exists on
+   **27+**, so the Ultra must first be **upgraded to the macOS 27 beta** (and have Xcode 27 /
+   Xcode-beta + the Metal Toolchain). Without the beta OS, the Core AI build and run **will not
+   work at all** — budget time for the OS upgrade before starting.
 3. **Python 3.11** + internet (to install the conversion tools).
 
 **What happens:** convert the model to a Core AI `.aimodel`, build a tiny program that loads
