@@ -171,10 +171,19 @@ pub const SPINNER_COLORS: &[ratatui::style::Color] = &[
     ratatui::style::Color::Magenta,
 ];
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum StartupPhase {
+    #[default]
+    Eocon,
+    OrchestratorSwarm,
+    Done,
+}
+
 pub struct App {
     pub swarm_phase: SwarmPhase,
     pub swarm_engine: SwarmEngine,
     pub swarm_layout: SwarmLayout,
+    pub startup_phase: StartupPhase,
     pub selected_agent_index: usize,
     pub should_quit: bool,
     pub tick_count: u64,
@@ -212,6 +221,7 @@ impl App {
             swarm_phase: SwarmPhase::Idle,
             swarm_engine: engine,
             swarm_layout: SwarmLayout::ChatWorkflow,
+            startup_phase: StartupPhase::Eocon,
             selected_agent_index: 0,
             should_quit: false,
             tick_count: 0,
@@ -232,7 +242,7 @@ impl App {
             cwd: cwd.clone(),
             project_dir,
             current_provider: Some("anthropic".to_string()),
-            current_model: Some("claude-sonnet-4".to_string()),
+            current_model: Some("claude-sonnet-4-6".to_string()),
             started: Instant::now(),
         };
 
@@ -256,6 +266,7 @@ impl App {
         match action {
             Action::Tick => {
                 self.tick_count += 1;
+                self.advance_startup_phase();
                 if self.mock_mode {
                     crate::mock::update_mock(self);
                 }
@@ -264,6 +275,9 @@ impl App {
                 self.drain_pty_outputs();
             }
             Action::Tab => {
+                if self.startup_phase != StartupPhase::Done {
+                    return;
+                }
                 if self.mention_picker_open {
                     self.accept_mention_picker();
                 } else if self.picker_open {
@@ -273,33 +287,54 @@ impl App {
                 }
             }
             Action::ShiftTab => {
+                if self.startup_phase != StartupPhase::Done {
+                    return;
+                }
                 self.swarm_engine.select_next();
             }
             Action::Abort | Action::Quit => {
                 self.should_quit = true;
             }
             Action::ToggleHelp => {
+                if self.startup_phase != StartupPhase::Done {
+                    return;
+                }
                 self.show_help = !self.show_help;
             }
             Action::Resize(cols, rows) => {
                 self.resize_screens(cols, rows);
             }
             Action::SelectNextAgent => {
+                if self.startup_phase != StartupPhase::Done {
+                    return;
+                }
                 self.swarm_engine.select_next();
             }
             Action::SelectPrevAgent => {
+                if self.startup_phase != StartupPhase::Done {
+                    return;
+                }
                 self.swarm_engine.select_prev();
             }
             Action::ToggleSwarmLayout => {
+                if self.startup_phase != StartupPhase::Done {
+                    return;
+                }
                 self.swarm_layout = self.swarm_layout.next();
             }
             Action::InputChar(c) => {
+                if self.startup_phase != StartupPhase::Done {
+                    return;
+                }
                 self.input_buffer.insert(self.input_cursor, c);
                 self.input_cursor += 1;
                 self.maybe_open_picker();
                 self.maybe_open_mention_picker();
             }
             Action::InputBackspace => {
+                if self.startup_phase != StartupPhase::Done {
+                    return;
+                }
                 if self.input_cursor > 0 {
                     self.input_cursor -= 1;
                     self.input_buffer.remove(self.input_cursor);
@@ -308,22 +343,34 @@ impl App {
                 }
             }
             Action::InputCursorLeft => {
+                if self.startup_phase != StartupPhase::Done {
+                    return;
+                }
                 if self.input_cursor > 0 {
                     self.input_cursor -= 1;
                 }
             }
             Action::InputCursorRight => {
+                if self.startup_phase != StartupPhase::Done {
+                    return;
+                }
                 if self.input_cursor < self.input_buffer.len() {
                     self.input_cursor += 1;
                 }
             }
             Action::InputCancel => {
+                if self.startup_phase != StartupPhase::Done {
+                    return;
+                }
                 self.input_buffer.clear();
                 self.input_cursor = 0;
                 self.picker_open = false;
                 self.mention_picker_open = false;
             }
             Action::InputSubmit => {
+                if self.startup_phase != StartupPhase::Done {
+                    return;
+                }
                 if self.picker_open {
                     self.accept_picker();
                 } else if self.mention_picker_open {
@@ -343,6 +390,9 @@ impl App {
                 self.interaction_scroll = 0;
             }
             Action::PickerUp => {
+                if self.startup_phase != StartupPhase::Done {
+                    return;
+                }
                 if self.picker_open && self.picker_selected > 0 {
                     self.picker_selected -= 1;
                 } else if self.mention_picker_open && self.mention_picker_selected > 0 {
@@ -350,6 +400,9 @@ impl App {
                 }
             }
             Action::PickerDown => {
+                if self.startup_phase != StartupPhase::Done {
+                    return;
+                }
                 if self.picker_open && self.picker_selected + 1 < self.picker_filtered.len() {
                     self.picker_selected += 1;
                 } else if self.mention_picker_open
@@ -359,9 +412,15 @@ impl App {
                 }
             }
             Action::ScrollUp => {
+                if self.startup_phase != StartupPhase::Done {
+                    return;
+                }
                 self.interaction_scroll = self.interaction_scroll.saturating_sub(5);
             }
             Action::ScrollDown => {
+                if self.startup_phase != StartupPhase::Done {
+                    return;
+                }
                 self.interaction_scroll += 5;
             }
             _ => {}
@@ -532,7 +591,19 @@ impl App {
         }
     }
 
+    fn advance_startup_phase(&mut self) {
+        // Each splash screen shows for ~0.5s (50ms tick rate * 10 ticks).
+        self.startup_phase = match self.startup_phase {
+            StartupPhase::Eocon if self.tick_count >= 10 => StartupPhase::OrchestratorSwarm,
+            StartupPhase::OrchestratorSwarm if self.tick_count >= 20 => StartupPhase::Done,
+            other => other,
+        };
+    }
+
     pub(crate) fn maybe_open_picker(&mut self) {
+        if self.startup_phase != StartupPhase::Done {
+            return;
+        }
         if self.input_buffer.starts_with('/') && Self::slash_input_state(&self.input_buffer).is_some() {
             self.picker_open = true;
             self.refresh_picker();
@@ -825,7 +896,7 @@ impl App {
                     });
                     (
                         self.current_provider.clone().unwrap_or_else(|| "anthropic".to_string()),
-                        self.current_model.clone().unwrap_or_else(|| "claude-sonnet-4.6".to_string()),
+                        self.current_model.clone().unwrap_or_else(|| "claude-sonnet-4-6".to_string()),
                         AgentRole::Generalist,
                     )
                 }

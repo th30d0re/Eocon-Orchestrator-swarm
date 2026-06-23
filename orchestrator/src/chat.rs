@@ -195,12 +195,17 @@ fn build_cli_config(req: &ChatRequest) -> Option<CliConfig> {
             })
         }
         "moonshot" => {
-            let exe = find_exe("kimi", &["/opt/homebrew/bin/kimi"])?;
-            let empty_mcp = empty_mcp_config_path();
+            let exe = find_exe("kimi", &[
+                "/Users/emmanuel/.kimi-code/bin/kimi",
+                "/opt/homebrew/bin/kimi",
+            ])?;
+            // Kimi requires models to be declared in config.toml, so we rely on the user's
+            // configured default_model rather than passing an arbitrary -m alias.
+            let args = vec!["-p".into()];
             Some(CliConfig {
                 program: exe,
-                args: vec!["--quiet".into(), "--mcp-config-file".into(), empty_mcp],
-                prompt_via_arg: false,
+                args,
+                prompt_via_arg: true,
                 output_file: None,
                 env: vec![],
                 json_input: false,
@@ -307,14 +312,6 @@ fn find_exe(name: &str, fallbacks: &[&str]) -> Option<String> {
         }
     }
     None
-}
-
-fn empty_mcp_config_path() -> String {
-    let path = std::env::temp_dir().join("eocon-empty-mcp.json");
-    if !path.exists() {
-        let _ = std::fs::write(&path, r#"{"mcpServers": {}}"#);
-    }
-    path.to_string_lossy().into_owned()
 }
 
 fn format_messages(messages: &[ChatMessage]) -> String {
@@ -512,7 +509,7 @@ mod tests {
         )
         .unwrap();
 
-        let prompt = build_system_prompt("anthropic", "claude-sonnet-4", &agents_dir, temp.path());
+        let prompt = build_system_prompt("anthropic", "claude-sonnet-4-6", &agents_dir, temp.path());
         assert!(prompt.contains("Eocon Swarm Orchestrator"));
         assert!(prompt.contains("You are in charge."));
         assert!(!prompt.contains("name: test-orchestrator"));

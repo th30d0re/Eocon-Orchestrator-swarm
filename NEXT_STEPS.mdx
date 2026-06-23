@@ -55,7 +55,7 @@ plans/                   # design spec + Apple containerization port plan
 ### Rust orchestrator
 ```bash
 cd orchestrator
-cargo test        # 37 tests pass (36 unit + 1 integration)
+cargo test        # 38 tests pass (37 unit + 1 integration)
 cargo run -- --swarm-demo     # UI demo, no model cost
 
 # Install to PATH (places the binary in ~/.cargo/bin)
@@ -64,6 +64,8 @@ eos --help
 ```
 
 Inside the TUI:
+- On startup the screen flashes **ECOCON** then **Orchestrator swarm** for ~1s before the
+  main UI appears.
 - Type `/` to open the slash-command picker.
 - Continue typing to filter top-level commands (`/ag` → `/agent`).
 - Press `Tab` or `Enter` to accept a command; if it has subcommands the picker stays open
@@ -225,7 +227,7 @@ Completed items from §9:
 
 Verification:
 
-- `cd orchestrator && cargo test` → 36 unit tests + 1 integration test pass.
+- `cd orchestrator && cargo test` → 37 unit tests + 1 integration test pass.
 - `cd localmodel-lm && swift build` → compiles (fallback paths on the 26.2 SDK).
 - `./scripts/build-mlx.sh` → builds successfully; local-dir load generates real text from the
   fused RootLedger models.

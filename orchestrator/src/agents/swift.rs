@@ -217,7 +217,7 @@ pub fn spawn_swift_agent(
         .iter()
         .find(|a| a.name == name)
         .map(|a| a.model.clone())
-        .unwrap_or_else(|| "claude-sonnet-4".to_string());
+        .unwrap_or_else(|| "claude-sonnet-4-6".to_string());
 
     let id = engine.spawn_agent(name.to_string(), role, provider, model);
     engine.spawn_pty_agent(&id, cmd, size)?;

@@ -17,19 +17,19 @@ pub fn seed_interaction(app: &mut App) {
         "planner".to_string(),
         AgentRole::Planner,
         "anthropic".to_string(),
-        "claude-sonnet-4".to_string(),
+        "claude-sonnet-4-6".to_string(),
     );
     let coder = app.swarm_engine.spawn_agent(
         "coder".to_string(),
         AgentRole::Coder,
         "anthropic".to_string(),
-        "claude-sonnet-4".to_string(),
+        "claude-sonnet-4-6".to_string(),
     );
     let reviewer = app.swarm_engine.spawn_agent(
         "reviewer".to_string(),
         AgentRole::Reviewer,
         "anthropic".to_string(),
-        "claude-sonnet-4".to_string(),
+        "claude-sonnet-4-6".to_string(),
     );
 
     if let Some(a) = app.swarm_engine.get_agent_mut(&planner) {

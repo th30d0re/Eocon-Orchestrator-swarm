@@ -54,7 +54,7 @@ fn handle_agent(app: &mut App, args: &[&str]) {
             let mut model = app
                 .current_model
                 .clone()
-                .unwrap_or_else(|| "claude-sonnet-4".to_string());
+                .unwrap_or_else(|| "claude-sonnet-4-6".to_string());
             let mut i = 2;
             while i + 1 < args.len() {
                 match args[i] {
