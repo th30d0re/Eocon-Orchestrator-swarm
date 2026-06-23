@@ -40,7 +40,7 @@ specializes and whether generation is coherent (the chat template is applied in 
 
 ### 0. Clone + place inputs
 ```bash
-git clone <THIS_REPO_URL> Eocon-Orchestrator-swarm
+git clone https://github.com/th30d0re/Eocon-Orchestrator-swarm.git Eocon-Orchestrator-swarm
 cd Eocon-Orchestrator-swarm
 
 # Download the fused model from the PRIVATE HF repo (needs HF read access):
