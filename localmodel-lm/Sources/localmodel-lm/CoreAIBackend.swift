@@ -547,7 +547,9 @@ enum CoreAIBackendError: Error, CustomStringConvertible {
 /// with the Metal Toolchain installed (see `CoreAIBackend.swift` header / plan step 34).
 struct CoreAIBackend: InferenceBackend {
     let modelURL: URL
-    init(modelURL: URL, functionName: String = "main") {
+    // Signature must mirror the real (#if canImport(CoreAI)) initializer so the call site
+    // in main.swift compiles under plain `swift build` too (where this fallback is used).
+    init(modelURL: URL, functionName: String = "main", maxTokens: Int = 512, temperature: Float = 0.7) {
         self.modelURL = modelURL
     }
 
