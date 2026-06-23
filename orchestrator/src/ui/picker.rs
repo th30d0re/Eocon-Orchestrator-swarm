@@ -1,11 +1,11 @@
 use ratatui::{
     layout::Rect,
     style::{Color, Modifier, Style},
-    text::{Line, Span},
+    text::{Line, Span, Text},
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
 
-use crate::app::{App, SLASH_COMMANDS};
+use crate::app::{App, PickerItem, SLASH_COMMANDS};
 use crate::ui::theme;
 
 /// Render the slash-command picker as a floating overlay above the input bar.
@@ -35,9 +35,9 @@ pub fn render(frame: &mut ratatui::Frame, app: &App) {
         .picker_filtered
         .iter()
         .enumerate()
-        .map(|(list_idx, &cmd_idx)| {
-            let cmd = &SLASH_COMMANDS[cmd_idx];
+        .map(|(list_idx, &item)| {
             let is_selected = list_idx == app.picker_selected;
+            let (name, description, arg_hint) = describe_item(item);
 
             let name_style = if is_selected {
                 Style::default()
@@ -58,9 +58,9 @@ pub fn render(frame: &mut ratatui::Frame, app: &App) {
                 Style::default().fg(Color::Yellow)
             };
 
-            let name_span = Span::styled(cmd.name, name_style);
-            let pad = " ".repeat((14usize).saturating_sub(cmd.name.len()));
-            let desc_span = Span::styled(format!("{}{}", pad, cmd.description), desc_style);
+            let pad = " ".repeat((14usize).saturating_sub(name.len()));
+            let name_span = Span::styled(name.clone(), name_style);
+            let desc_span = Span::styled(format!("{}{}", pad, description), desc_style);
 
             let mut spans = if is_selected {
                 vec![
@@ -76,10 +76,10 @@ pub fn render(frame: &mut ratatui::Frame, app: &App) {
                 ]
             };
 
-            // Show arg hint for selected commands that take an argument.
-            if is_selected && cmd.takes_arg && !cmd.arg_hint.is_empty() {
+            // Show arg hint for selected items.
+            if is_selected && !arg_hint.is_empty() {
                 spans.push(Span::raw(" "));
-                spans.push(Span::styled(cmd.arg_hint.to_string(), hint_style));
+                spans.push(Span::styled(arg_hint.to_string(), hint_style));
             }
 
             Line::from(spans)
@@ -102,4 +102,108 @@ pub fn render(frame: &mut ratatui::Frame, app: &App) {
         .wrap(Wrap { trim: false });
 
     frame.render_widget(paragraph, picker_area);
+
+    render_preview(frame, app, picker_area);
+}
+
+fn describe_item(item: PickerItem) -> (String, &'static str, &'static str) {
+    match item {
+        PickerItem::Command(idx) => {
+            let cmd = &SLASH_COMMANDS[idx];
+            (
+                cmd.name.to_string(),
+                cmd.description,
+                if cmd.subcommands.is_empty() {
+                    cmd.arg_hint
+                } else {
+                    "<subcommand>"
+                },
+            )
+        }
+        PickerItem::Subcommand(cmd_idx, sub_idx) => {
+            let cmd = &SLASH_COMMANDS[cmd_idx];
+            let sub = &cmd.subcommands[sub_idx];
+            (
+                format!("{} {}", cmd.name, sub.name),
+                sub.description,
+                sub.args,
+            )
+        }
+    }
+}
+
+/// Render a preview/help box above the picker showing usage for the selected item.
+fn render_preview(frame: &mut ratatui::Frame, app: &App, picker_area: Rect) {
+    let Some(&item) = app.picker_filtered.get(app.picker_selected) else {
+        return;
+    };
+
+    let text = preview_text(item);
+    let line_count = text.lines().count() as u16;
+    let height = (line_count + 2)
+        .min(picker_area.y.saturating_sub(2))
+        .max(3);
+    let width = picker_area.width;
+    let x = picker_area.x;
+    let y = picker_area.y.saturating_sub(height + 1);
+    if y == 0 && height < 3 {
+        return; // not enough room
+    }
+    let preview_area = Rect::new(x, y, width, height);
+
+    frame.render_widget(Clear, preview_area);
+
+    let paragraph = Paragraph::new(Text::from(text))
+        .block(
+            Block::default()
+                .title(" Preview ")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Gray)),
+        )
+        .wrap(Wrap { trim: false });
+
+    frame.render_widget(paragraph, preview_area);
+}
+
+fn preview_text(item: PickerItem) -> String {
+    match item {
+        PickerItem::Command(idx) => {
+            let cmd = &SLASH_COMMANDS[idx];
+            let mut lines = vec![
+                format!("{} -- {}", cmd.name, cmd.description),
+                String::new(),
+            ];
+            if cmd.subcommands.is_empty() {
+                if cmd.takes_arg {
+                    lines.push(format!("Usage: {} {}", cmd.name, cmd.arg_hint));
+                } else {
+                    lines.push(format!("Usage: {}", cmd.name));
+                }
+            } else {
+                lines.push("Subcommands:".to_string());
+                for sub in cmd.subcommands {
+                    let args = if sub.args.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" {}", sub.args)
+                    };
+                    lines.push(format!("  {}{} -- {}", sub.name, args, sub.description));
+                }
+            }
+            lines.join("\n")
+        }
+        PickerItem::Subcommand(cmd_idx, sub_idx) => {
+            let cmd = &SLASH_COMMANDS[cmd_idx];
+            let sub = &cmd.subcommands[sub_idx];
+            let args = if sub.args.is_empty() {
+                String::new()
+            } else {
+                format!(" {}", sub.args)
+            };
+            format!(
+                "{} {} -- {}\n\nUsage: {} {}{}",
+                cmd.name, sub.name, sub.description, cmd.name, sub.name, args
+            )
+        }
+    }
 }

@@ -28,70 +28,129 @@ pub struct InteractionMessage {
     pub text: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
+pub struct SlashSubcommand {
+    pub name: &'static str,
+    pub description: &'static str,
+    pub args: &'static str,
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct SlashCommand {
     pub name: &'static str,
     pub description: &'static str,
     pub takes_arg: bool,
     pub arg_hint: &'static str,
+    pub subcommands: &'static [SlashSubcommand],
 }
 
 pub const SLASH_COMMANDS: &[SlashCommand] = &[
     SlashCommand {
         name: "/agent",
-        description: "Manage agents: spawn, pause, resume, edit, restart, unfold, kill, list",
+        description: "Manage agents",
         takes_arg: true,
         arg_hint: "<subcommand> [args]",
+        subcommands: &[
+            SlashSubcommand { name: "spawn", description: "Spawn a new agent", args: "<name> [--role <role>] [--provider <p>] [--model <m>]" },
+            SlashSubcommand { name: "list", description: "List running agents", args: "" },
+            SlashSubcommand { name: "pause", description: "Pause an agent", args: "<name>" },
+            SlashSubcommand { name: "resume", description: "Resume a paused agent", args: "<name>" },
+            SlashSubcommand { name: "edit", description: "Edit an agent's instruction", args: "<name> <instruction>" },
+            SlashSubcommand { name: "restart", description: "Restart an agent", args: "<name>" },
+            SlashSubcommand { name: "kill", description: "Kill an agent", args: "<name>" },
+            SlashSubcommand { name: "unfold", description: "Show an agent's private memory", args: "<name>" },
+        ],
     },
     SlashCommand {
         name: "/gist",
-        description: "Manage gists: list, unfold, reject",
+        description: "Manage gists",
         takes_arg: true,
         arg_hint: "<subcommand> [args]",
+        subcommands: &[
+            SlashSubcommand { name: "list", description: "List gists", args: "" },
+            SlashSubcommand { name: "unfold", description: "Unfold a gist", args: "<id>" },
+            SlashSubcommand { name: "reject", description: "Reject a gist", args: "<id>" },
+        ],
     },
     SlashCommand {
         name: "/swarm",
-        description: "Manage swarm: run, stop, reset, status",
+        description: "Manage swarm",
         takes_arg: true,
         arg_hint: "<subcommand> [args]",
+        subcommands: &[
+            SlashSubcommand { name: "run", description: "Run a swarm task", args: "<task description>" },
+            SlashSubcommand { name: "stop", description: "Stop the swarm", args: "" },
+            SlashSubcommand { name: "reset", description: "Reset the swarm", args: "" },
+            SlashSubcommand { name: "status", description: "Show swarm status", args: "" },
+        ],
+    },
+    SlashCommand {
+        name: "/model",
+        description: "Manage model variants",
+        takes_arg: true,
+        arg_hint: "<subcommand> [args]",
+        subcommands: &[
+            SlashSubcommand { name: "list", description: "List model handles and active variants", args: "" },
+            SlashSubcommand { name: "variants", description: "List variants for a handle", args: "<handle>" },
+            SlashSubcommand { name: "set", description: "Set active variant for a handle", args: "<handle> <variant>" },
+            SlashSubcommand { name: "ping", description: "Ping configured model", args: "<handle>" },
+        ],
     },
     SlashCommand {
         name: "/policy",
         description: "Show current policy",
         takes_arg: false,
         arg_hint: "",
+        subcommands: &[],
     },
     SlashCommand {
         name: "/trace",
         description: "Show trace for an agent",
         takes_arg: true,
         arg_hint: "<agent_id>",
+        subcommands: &[],
     },
     SlashCommand {
         name: "/metrics",
         description: "Show swarm metrics",
         takes_arg: false,
         arg_hint: "",
+        subcommands: &[],
     },
     SlashCommand {
         name: "/layout",
         description: "Toggle swarm layout",
         takes_arg: false,
         arg_hint: "",
+        subcommands: &[],
     },
     SlashCommand {
         name: "/help",
         description: "Show available commands",
         takes_arg: false,
         arg_hint: "",
+        subcommands: &[],
     },
     SlashCommand {
         name: "/quit",
         description: "Exit orchestrator",
         takes_arg: false,
         arg_hint: "",
+        subcommands: &[],
     },
 ];
+
+/// An item that can be selected in the slash-command picker.
+#[derive(Debug, Clone, Copy)]
+pub enum PickerItem {
+    Command(usize),
+    Subcommand(usize, usize),
+}
+
+enum SlashInputState {
+    TopLevel { partial: String },
+    Subcommand { cmd: usize, partial: String },
+}
 
 pub const FUN_STATUSES: &[&str] = &[
     "Herding agents",
@@ -125,7 +184,7 @@ pub struct App {
     pub input_cursor: usize,
     pub picker_open: bool,
     pub picker_selected: usize,
-    pub picker_filtered: Vec<usize>,
+    pub picker_filtered: Vec<PickerItem>,
     pub mention_picker_open: bool,
     pub mention_picker_selected: usize,
     pub mention_picker_filtered: Vec<usize>,
@@ -474,7 +533,7 @@ impl App {
     }
 
     pub(crate) fn maybe_open_picker(&mut self) {
-        if self.input_buffer.starts_with('/') && !self.input_buffer.contains(' ') {
+        if self.input_buffer.starts_with('/') && Self::slash_input_state(&self.input_buffer).is_some() {
             self.picker_open = true;
             self.refresh_picker();
         } else {
@@ -483,40 +542,123 @@ impl App {
     }
 
     pub(crate) fn refresh_picker(&mut self) {
-        let filter = self
-            .input_buffer
-            .strip_prefix('/')
-            .unwrap_or("")
-            .to_lowercase();
-        self.picker_filtered = SLASH_COMMANDS
-            .iter()
-            .enumerate()
-            .filter(|(_, cmd)| {
-                cmd.name.to_lowercase().contains(&filter)
-                    || cmd.description.to_lowercase().contains(&filter)
-            })
-            .map(|(i, _)| i)
-            .collect();
+        self.picker_filtered.clear();
+        if let Some(state) = Self::slash_input_state(&self.input_buffer) {
+            match state {
+                SlashInputState::TopLevel { partial } => {
+                    self.picker_filtered = SLASH_COMMANDS
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, cmd)| {
+                            cmd.name.to_lowercase().contains(&partial)
+                                || cmd.description.to_lowercase().contains(&partial)
+                        })
+                        .map(|(i, _)| PickerItem::Command(i))
+                        .collect();
+                }
+                SlashInputState::Subcommand { cmd, partial } => {
+                    self.picker_filtered = SLASH_COMMANDS[cmd]
+                        .subcommands
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, sub)| {
+                            sub.name.to_lowercase().contains(&partial)
+                                || sub.description.to_lowercase().contains(&partial)
+                        })
+                        .map(|(j, _)| PickerItem::Subcommand(cmd, j))
+                        .collect();
+                }
+            }
+        }
         self.picker_selected = self
             .picker_selected
             .min(self.picker_filtered.len().saturating_sub(1));
     }
 
     pub(crate) fn accept_picker(&mut self) {
-        if let Some(&idx) = self.picker_filtered.get(self.picker_selected) {
-            let cmd = &SLASH_COMMANDS[idx];
-            if cmd.takes_arg {
-                self.input_buffer = format!("{} ", cmd.name);
-                self.input_cursor = self.input_buffer.len();
-                self.picker_open = false;
-            } else {
-                let full_cmd = cmd.name.to_string();
-                self.input_buffer.clear();
-                self.input_cursor = 0;
-                self.picker_open = false;
-                self.handle_command(&full_cmd);
+        if let Some(&item) = self.picker_filtered.get(self.picker_selected) {
+            match item {
+                PickerItem::Command(idx) => {
+                    let cmd = &SLASH_COMMANDS[idx];
+                    if !cmd.subcommands.is_empty() {
+                        self.input_buffer = format!("{} ", cmd.name);
+                        self.input_cursor = self.input_buffer.len();
+                        self.picker_selected = 0;
+                        self.refresh_picker();
+                        // Keep picker open so the user can pick a subcommand.
+                    } else if cmd.takes_arg {
+                        self.input_buffer = format!("{} ", cmd.name);
+                        self.input_cursor = self.input_buffer.len();
+                        self.picker_open = false;
+                    } else {
+                        let full_cmd = cmd.name.to_string();
+                        self.input_buffer.clear();
+                        self.input_cursor = 0;
+                        self.picker_open = false;
+                        self.handle_command(&full_cmd);
+                    }
+                }
+                PickerItem::Subcommand(cmd_idx, sub_idx) => {
+                    let cmd = &SLASH_COMMANDS[cmd_idx];
+                    let sub = &cmd.subcommands[sub_idx];
+                    self.input_buffer = format!("{} {} ", cmd.name, sub.name);
+                    self.input_cursor = self.input_buffer.len();
+                    self.picker_open = false;
+                }
             }
         }
+    }
+
+    /// Returns the parser state used to decide what the slash picker should display.
+    fn slash_input_state(input: &str) -> Option<SlashInputState> {
+        let rest = input.strip_prefix('/')?;
+        let tokens: Vec<&str> = rest.split_whitespace().collect();
+        let trailing_space = rest.ends_with(' ') || rest.ends_with('\t');
+
+        if tokens.is_empty() {
+            return Some(SlashInputState::TopLevel {
+                partial: "".to_string(),
+            });
+        }
+
+        // A partial root (e.g. "/ag") is always a top-level filter; no need to match exactly.
+        if tokens.len() == 1 && !trailing_space {
+            return Some(SlashInputState::TopLevel {
+                partial: tokens[0].to_string(),
+            });
+        }
+
+        // From here on we need an exact root command match.
+        let cmd_idx = SLASH_COMMANDS
+            .iter()
+            .position(|c| c.name.trim_start_matches('/') == tokens[0])?;
+
+        if tokens.len() == 1 {
+            // "/agent " — show subcommands if any.
+            if SLASH_COMMANDS[cmd_idx].subcommands.is_empty() {
+                return None;
+            }
+            return Some(SlashInputState::Subcommand {
+                cmd: cmd_idx,
+                partial: "".to_string(),
+            });
+        }
+
+        // We have at least two tokens. If the command has no subcommands, there is nothing to
+        // complete.
+        if SLASH_COMMANDS[cmd_idx].subcommands.is_empty() {
+            return None;
+        }
+
+        if tokens.len() == 2 && !trailing_space {
+            return Some(SlashInputState::Subcommand {
+                cmd: cmd_idx,
+                partial: tokens[1].to_string(),
+            });
+        }
+
+        // Subcommand already chosen (or more tokens typed); no picker completions.
+        None
     }
 
     pub(crate) fn maybe_open_mention_picker(&mut self) {

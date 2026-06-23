@@ -75,6 +75,46 @@ mod tests {
     }
 
     #[test]
+    fn slash_command_picker_nested_renders() {
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = App::new(true);
+        app.input_buffer = "/agent s".to_string();
+        app.input_cursor = 8;
+        app.maybe_open_picker();
+        terminal.draw(|frame| render_swarm(frame, &app)).unwrap();
+        let buf = terminal.backend().buffer();
+        let content: String = (0..24)
+            .flat_map(|row| (0..80).map(move |col| (col, row)))
+            .map(|(col, row)| buf[(col, row)].symbol().to_string())
+            .collect();
+        assert!(
+            content.contains("/agent spawn"),
+            "picker should render /agent spawn subcommand"
+        );
+    }
+
+    #[test]
+    fn slash_command_preview_renders() {
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = App::new(true);
+        app.input_buffer = "/agent".to_string();
+        app.input_cursor = 6;
+        app.maybe_open_picker();
+        terminal.draw(|frame| render_swarm(frame, &app)).unwrap();
+        let buf = terminal.backend().buffer();
+        let content: String = (0..24)
+            .flat_map(|row| (0..80).map(move |col| (col, row)))
+            .map(|(col, row)| buf[(col, row)].symbol().to_string())
+            .collect();
+        assert!(
+            content.contains("Subcommands"),
+            "preview should list subcommands for /agent"
+        );
+    }
+
+    #[test]
     fn mention_picker_renders() {
         let backend = TestBackend::new(80, 24);
         let mut terminal = Terminal::new(backend).unwrap();

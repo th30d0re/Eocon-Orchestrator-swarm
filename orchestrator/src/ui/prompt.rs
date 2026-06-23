@@ -24,12 +24,13 @@ pub fn input_height(app: &App, width: u16) -> u16 {
 
 pub fn input_bar(app: &App) -> Paragraph<'_> {
     let cursor_char = '▎';
+    let prompt = Span::styled(
+        "> ",
+        Style::default().fg(Color::DarkGray),
+    );
     let content = if app.input_buffer.is_empty() {
-        // Show a dim placeholder when empty.
-        Text::from(vec![Line::from(vec![Span::styled(
-            "Type / for commands, @ to mention a model, or enter a task...",
-            Style::default().fg(Color::DarkGray),
-        )])])
+        // Empty buffer shows only the prompt chevron.
+        Text::from(vec![Line::from(vec![prompt])])
     } else {
         // We don't know the render width here, so we build a single-line Text with the cursor
         // inserted. The Paragraph below uses Wrap so it will reflow. The cursor marker is
@@ -37,6 +38,7 @@ pub fn input_bar(app: &App) -> Paragraph<'_> {
         let before = &app.input_buffer[..app.input_cursor];
         let after = &app.input_buffer[app.input_cursor..];
         let line = Line::from(vec![
+            prompt,
             Span::raw(before),
             Span::styled(cursor_char.to_string(), Style::default().fg(Color::White)),
             Span::raw(after),
@@ -47,7 +49,6 @@ pub fn input_bar(app: &App) -> Paragraph<'_> {
     Paragraph::new(content)
         .block(
             Block::default()
-                .title(" Input ")
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(Color::DarkGray)),
         )
@@ -114,5 +115,14 @@ mod tests {
     fn input_height_includes_border() {
         let app = App::new(true);
         assert_eq!(input_height(&app, 80), 3);
+    }
+
+    #[test]
+    fn input_height_accounts_for_prompt_prefix() {
+        let mut app = App::new(true);
+        // Width 20 -> content width 18 -> text width 16 (after "> ").
+        // 40 ASCII chars with spaces will wrap to 3 text lines + 2 border rows = 5.
+        app.input_buffer = "a ".repeat(20).trim_end().to_string();
+        assert_eq!(input_height(&app, 20), 5);
     }
 }
