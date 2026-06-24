@@ -461,39 +461,75 @@ impl App {
             };
 
             if let Some(rx) = maybe_rx {
-                match rx.try_recv() {
-                    Ok(Ok(response)) => {
-                        if let Some(agent) = self.swarm_engine.get_agent_mut(&id) {
-                            agent.append_to_memory("assistant", response.clone());
-                            agent.set_state(AgentLifecycleState::Completed);
-                            if let Some(gist) = self.swarm_engine.publish_gist(&id) {
-                                self.interaction.push(InteractionMessage {
-                                    voice: Voice::Gist,
-                                    text: format!(
-                                        "{}: {} ({} evidence items)",
-                                        gist.agent_name,
-                                        gist.claim,
-                                        gist.evidence.len()
-                                    ),
-                                });
+                use crate::chat::ChatEvent;
+                use std::sync::mpsc::TryRecvError;
+
+                // Drain everything available this frame: accumulate streamed chunks, and
+                // note whether the stream finished or errored.
+                let mut finished = false;
+                let mut errored: Option<String> = None;
+                loop {
+                    match rx.try_recv() {
+                        Ok(ChatEvent::Chunk(text)) => {
+                            if let Some(agent) = self.swarm_engine.get_agent_mut(&id) {
+                                if let AgentOutput::Chat(chat) = &mut agent.output {
+                                    chat.pending_response.push_str(&text);
+                                }
                             }
                         }
-                    }
-                    Ok(Err(e)) => {
-                        if let Some(agent) = self.swarm_engine.get_agent_mut(&id) {
-                            agent.set_state(AgentLifecycleState::Failed);
+                        Ok(ChatEvent::Done) => {
+                            finished = true;
+                            break;
                         }
+                        Ok(ChatEvent::Error(e)) => {
+                            errored = Some(e);
+                            break;
+                        }
+                        // No more events yet — still streaming.
+                        Err(TryRecvError::Empty) => break,
+                        // Worker ended without an explicit Done — finalize with what we have.
+                        Err(TryRecvError::Disconnected) => {
+                            finished = true;
+                            break;
+                        }
+                    }
+                }
+
+                if let Some(e) = errored {
+                    if let Some(agent) = self.swarm_engine.get_agent_mut(&id) {
+                        agent.set_state(AgentLifecycleState::Failed);
+                    }
+                    self.interaction.push(InteractionMessage {
+                        voice: Voice::Error,
+                        text: format!("Agent {} error: {}", id, e),
+                    });
+                } else if finished {
+                    // Move the accumulated text into memory, complete, then publish a gist.
+                    if let Some(agent) = self.swarm_engine.get_agent_mut(&id) {
+                        let full = if let AgentOutput::Chat(chat) = &mut agent.output {
+                            std::mem::take(&mut chat.pending_response)
+                        } else {
+                            String::new()
+                        };
+                        agent.append_to_memory("assistant", full.trim_end().to_string());
+                        agent.set_state(AgentLifecycleState::Completed);
+                    }
+                    if let Some(gist) = self.swarm_engine.publish_gist(&id) {
                         self.interaction.push(InteractionMessage {
-                            voice: Voice::Error,
-                            text: format!("Agent {} error: {}", id, e),
+                            voice: Voice::Gist,
+                            text: format!(
+                                "{}: {} ({} evidence items)",
+                                gist.agent_name,
+                                gist.claim,
+                                gist.evidence.len()
+                            ),
                         });
                     }
-                    Err(_) => {
-                        // Still pending; put receiver back.
-                        if let Some(agent) = self.swarm_engine.get_agent_mut(&id) {
-                            if let AgentOutput::Chat(chat) = &mut agent.output {
-                                chat.rx = Some(rx);
-                            }
+                } else {
+                    // Still streaming; put the receiver back for the next frame.
+                    if let Some(agent) = self.swarm_engine.get_agent_mut(&id) {
+                        if let AgentOutput::Chat(chat) = &mut agent.output {
+                            chat.rx = Some(rx);
                         }
                     }
                 }

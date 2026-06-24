@@ -1,7 +1,7 @@
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use std::sync::mpsc::{channel, Receiver};
+use std::sync::mpsc::{channel, Receiver, Sender};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ChatMessage {
@@ -17,19 +17,164 @@ pub struct ChatRequest {
     pub system_prompt: Option<String>,
 }
 
-/// Spawn a background thread that runs the provider's CLI or HTTP client and returns the
-/// assistant's text via a channel.
-pub fn spawn_chat_request(req: ChatRequest) -> Receiver<Result<String, String>> {
+/// An incremental event from a provider as it produces output.
+#[derive(Debug, Clone)]
+pub enum ChatEvent {
+    /// A piece of the assistant's text, streamed as the CLI emits it.
+    Chunk(String),
+    /// Generation finished successfully (all text already delivered via `Chunk`s).
+    Done,
+    /// The provider failed; the message is the error to surface.
+    Error(String),
+}
+
+/// Spawn a background thread that runs the provider's CLI or HTTP client and **streams** the
+/// assistant's text back as `ChatEvent`s. stdout-based CLIs (claude, ollama, kimi, gemini,
+/// cursor) stream line-by-line; providers that can't stream — `codex` (writes its answer to
+/// `--output-last-message` read only at exit) and the `lmstudio` HTTP client — are buffered
+/// and delivered as a single chunk before `Done`.
+pub fn spawn_chat_request(req: ChatRequest) -> Receiver<ChatEvent> {
     let (tx, rx) = channel();
     std::thread::spawn(move || {
-        let result = if req.provider == "lmstudio" {
-            run_lmstudio_chat(req)
-        } else {
-            run_cli_chat(req)
-        };
-        let _ = tx.send(result);
+        if req.provider == "lmstudio" {
+            emit_buffered(&tx, run_lmstudio_chat(req));
+            return;
+        }
+        match build_cli_config(&req) {
+            // stdout-based providers stream live.
+            Some(cfg) if cfg.output_file.is_none() => stream_cli_chat(req, cfg, &tx),
+            // codex (file-based) or an unknown provider (None → error): buffered path.
+            _ => emit_buffered(&tx, run_cli_chat(req)),
+        }
     });
     rx
+}
+
+/// Deliver a fully-buffered result as a single chunk (if any) followed by `Done`/`Error`.
+fn emit_buffered(tx: &Sender<ChatEvent>, result: Result<String, String>) {
+    match result {
+        Ok(text) => {
+            if !text.is_empty() {
+                let _ = tx.send(ChatEvent::Chunk(text));
+            }
+            let _ = tx.send(ChatEvent::Done);
+        }
+        Err(e) => {
+            let _ = tx.send(ChatEvent::Error(e));
+        }
+    }
+}
+
+/// Run a stdout-based provider CLI, sending each output line as a `ChatEvent::Chunk` as it
+/// arrives, then `Done` (or `Error` on failure).
+fn stream_cli_chat(req: ChatRequest, cfg: CliConfig, tx: &Sender<ChatEvent>) {
+    let prompt = if cfg.json_input {
+        latest_user_message(&req.messages)
+    } else {
+        format_messages(&req.messages)
+    };
+
+    let mut args = cfg.args.clone();
+    if cfg.prompt_via_arg {
+        args.push(prompt.clone());
+    }
+
+    let mut cmd = Command::new(&cfg.program);
+    cmd.args(&args);
+    for (k, v) in &cfg.env {
+        cmd.env(k, v);
+    }
+    cmd.stdin(Stdio::piped());
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => {
+            let _ = tx.send(ChatEvent::Error(format!("Failed to spawn '{}': {}", cfg.program, e)));
+            return;
+        }
+    };
+
+    if cfg.prompt_via_arg {
+        if let Some(stdin) = child.stdin.take() {
+            drop(stdin);
+        }
+    } else if cfg.json_input {
+        let input = serde_json::json!({
+            "session_id": format!("eocon-{}", uuid::Uuid::new_v4()),
+            "prompt": prompt,
+        });
+        if let Some(mut stdin) = child.stdin.take() {
+            let _ = stdin.write_all(input.to_string().as_bytes());
+            let _ = stdin.write_all(b"\n");
+            let _ = stdin.flush();
+        }
+    } else if let Some(mut stdin) = child.stdin.take() {
+        let _ = stdin.write_all(prompt.as_bytes());
+        let _ = stdin.flush();
+    }
+
+    let stdout = match child.stdout.take() {
+        Some(s) => s,
+        None => {
+            let _ = tx.send(ChatEvent::Error("Failed to capture stdout".into()));
+            return;
+        }
+    };
+    let stderr = child.stderr.take();
+
+    // Stream stdout line-by-line. For CLIs that stream their answer this is live; for ones
+    // that buffer internally it simply all arrives at the end — either way correct.
+    let stdout_tx = tx.clone();
+    let stdout_handle = std::thread::spawn(move || {
+        let reader = BufReader::new(stdout);
+        let mut produced = false;
+        for line in reader.lines().map_while(Result::ok) {
+            let _ = stdout_tx.send(ChatEvent::Chunk(format!("{}\n", strip_ansi(&line))));
+            produced = true;
+        }
+        produced
+    });
+
+    let stderr_handle = std::thread::spawn(move || {
+        let mut err = String::new();
+        if let Some(stderr) = stderr {
+            let _ = BufReader::new(stderr).read_to_string(&mut err);
+        }
+        err
+    });
+
+    let status = child.wait();
+    let produced = stdout_handle.join().unwrap_or(false);
+    let stderr_text = stderr_handle.join().unwrap_or_default();
+
+    match status {
+        Ok(s) if s.success() => {
+            if !produced && !stderr_text.trim().is_empty() {
+                let _ = tx.send(ChatEvent::Chunk(format!(
+                    "(no stdout)\n--- stderr ---\n{}",
+                    strip_ansi(&stderr_text).trim()
+                )));
+            }
+            let _ = tx.send(ChatEvent::Done);
+        }
+        Ok(s) => {
+            let mut msg = format!("{} exited with status {:?}", cfg.program, s.code());
+            let err_clean = strip_ansi(&stderr_text).trim().to_string();
+            if !err_clean.is_empty() {
+                msg.push_str("\n--- stderr ---\n");
+                msg.push_str(&err_clean);
+            }
+            let _ = tx.send(ChatEvent::Error(msg));
+        }
+        Err(e) => {
+            let _ = tx.send(ChatEvent::Error(format!(
+                "Failed to wait for '{}': {}",
+                cfg.program, e
+            )));
+        }
+    }
 }
 
 fn run_cli_chat(req: ChatRequest) -> Result<String, String> {

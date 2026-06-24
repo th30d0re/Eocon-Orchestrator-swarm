@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use crate::agents::runner::RunHandle;
 use crate::agents::swift::SwiftBuildOutput;
-use crate::chat::ChatRequest;
+use crate::chat::{ChatEvent, ChatRequest};
 use crate::policy::policy::RiskLabel;
 use crate::pty_screen::PtyScreen;
 use crate::swarm::memory::AgentMemory;
@@ -90,7 +90,8 @@ pub enum AgentOutput {
 }
 
 pub struct ChatOutput {
-    pub rx: Option<Receiver<Result<String, String>>>,
+    pub rx: Option<Receiver<ChatEvent>>,
+    /// Accumulates streamed chunks; becomes the final assistant message on `Done`.
     pub pending_response: String,
 }
 
