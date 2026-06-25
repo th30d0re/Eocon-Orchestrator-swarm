@@ -82,7 +82,18 @@ const SWARM_SHADOW: &[&str] = &[
     r" ╚══════╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝",
 ];
 
-const SWARM_VARIANTS: &[&[&str]] = &[SWARM_SHADOW];
+/// Bold ▓-block variant (matches the EOCON_BOLD aesthetic).
+const SWARM_BLOCK: &[&str] = &[
+    r" ▓▓▓▓▓ ▓▓   ▓▓  ▓▓▓▓  ▓▓▓▓▓  ▓▓   ▓▓",
+    r" ▓▓    ▓▓   ▓▓ ▓▓  ▓▓ ▓▓  ▓▓ ▓▓▓ ▓▓▓",
+    r" ▓▓▓▓▓ ▓▓ ▓ ▓▓ ▓▓▓▓▓▓ ▓▓▓▓▓  ▓▓ ▓ ▓▓",
+    r"    ▓▓ ▓▓▓ ▓▓▓ ▓▓  ▓▓ ▓▓ ▓▓  ▓▓   ▓▓",
+    r" ▓▓▓▓▓  ▓▓ ▓▓  ▓▓  ▓▓ ▓▓  ▓▓ ▓▓   ▓▓",
+];
+
+/// One Swarm variant is picked at random per launch (mirrors Foundation's multi-variant
+/// second stage — exact same animation, only the wordmark changes FOUNDATION → SWARM).
+const SWARM_VARIANTS: &[&[&str]] = &[SWARM_SHADOW, SWARM_BLOCK];
 
 const SUBTITLE: &str = "O R C H E S T R A T O R";
 
