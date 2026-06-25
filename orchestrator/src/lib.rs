@@ -63,6 +63,13 @@ pub struct CliArgs {
 pub fn run(config: Config) -> Result<()> {
     let mut guard = init_terminal().wrap_err("failed to initialize terminal")?;
 
+    // Animated Eocon → Swarm startup splash (blocking, before the main event loop).
+    crate::ui::startup::run_startup(|draw_callback| {
+        let _ = guard.terminal().draw(|frame| {
+            draw_callback(frame);
+        });
+    });
+
     let mut app = App::new(config.swarm_demo);
     if let Some(provider) = config.provider {
         app.current_provider = Some(provider);

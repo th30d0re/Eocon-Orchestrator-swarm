@@ -200,6 +200,7 @@ pub struct App {
     pub handle_counter: HashMap<String, u32>,
     pub active_variants: HashMap<String, usize>,
     pub interaction: Vec<InteractionMessage>,
+    pub streaming_interaction_indices: HashMap<String, usize>,
     pub interaction_scroll: u16,
     pub cwd: PathBuf,
     pub project_dir: PathBuf,
@@ -221,7 +222,9 @@ impl App {
             swarm_phase: SwarmPhase::Idle,
             swarm_engine: engine,
             swarm_layout: SwarmLayout::ChatWorkflow,
-            startup_phase: StartupPhase::Eocon,
+            // The animated splash now runs as a blocking pre-loop sequence in `lib::run`
+            // (see ui/startup.rs), so the in-loop splash starts already Done.
+            startup_phase: StartupPhase::Done,
             selected_agent_index: 0,
             should_quit: false,
             tick_count: 0,
@@ -238,6 +241,7 @@ impl App {
             handle_counter: HashMap::new(),
             active_variants: HashMap::new(),
             interaction: Vec::new(),
+            streaming_interaction_indices: HashMap::new(),
             interaction_scroll: 0,
             cwd: cwd.clone(),
             project_dir,
@@ -442,6 +446,35 @@ impl App {
         }
     }
 
+    /// Update (or create) the chat-panel interaction message that mirrors a streaming agent
+    /// response. The message text is prefixed with the agent's display name.
+    fn update_streaming_interaction(&mut self, id: &str) {
+        let (name, pending) = if let Some(agent) = self.swarm_engine.get_agent(id) {
+            let pending = if let AgentOutput::Chat(chat) = &agent.output {
+                chat.pending_response.clone()
+            } else {
+                String::new()
+            };
+            (agent.name.clone(), pending)
+        } else {
+            (id.to_string(), String::new())
+        };
+
+        let text = format!("{}: {}", name, pending);
+        if let Some(&idx) = self.streaming_interaction_indices.get(id) {
+            if let Some(msg) = self.interaction.get_mut(idx) {
+                msg.text = text;
+                return;
+            }
+        }
+        self.interaction.push(InteractionMessage {
+            voice: Voice::Agent,
+            text,
+        });
+        self.streaming_interaction_indices
+            .insert(id.to_string(), self.interaction.len() - 1);
+    }
+
     fn drain_chat_responses(&mut self) {
         let ids: Vec<String> = self
             .swarm_engine
@@ -471,11 +504,14 @@ impl App {
                 loop {
                     match rx.try_recv() {
                         Ok(ChatEvent::Chunk(text)) => {
+                            // Accumulate into the agent's pending response and mirror the stream
+                            // into the chat panel.
                             if let Some(agent) = self.swarm_engine.get_agent_mut(&id) {
                                 if let AgentOutput::Chat(chat) = &mut agent.output {
                                     chat.pending_response.push_str(&text);
                                 }
                             }
+                            self.update_streaming_interaction(&id);
                         }
                         Ok(ChatEvent::Done) => {
                             finished = true;
@@ -499,11 +535,13 @@ impl App {
                     if let Some(agent) = self.swarm_engine.get_agent_mut(&id) {
                         agent.set_state(AgentLifecycleState::Failed);
                     }
+                    self.streaming_interaction_indices.remove(&id);
                     self.interaction.push(InteractionMessage {
                         voice: Voice::Error,
                         text: format!("Agent {} error: {}", id, e),
                     });
                 } else if finished {
+                    self.streaming_interaction_indices.remove(&id);
                     // Move the accumulated text into memory, complete, then publish a gist.
                     if let Some(agent) = self.swarm_engine.get_agent_mut(&id) {
                         let full = if let AgentOutput::Chat(chat) = &mut agent.output {
@@ -989,5 +1027,59 @@ pub fn detect_project_dir(cwd: &Path) -> PathBuf {
             Some(p) => cur = p,
             None => return cwd.to_path_buf(),
         }
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use std::sync::mpsc;
+
+    use crate::app::{App, StartupPhase};
+    use crate::chat::ChatEvent;
+    use crate::swarm::agent::{AgentOutput, AgentRole, ChatOutput};
+    use crate::ui::theme::Voice;
+
+    #[test]
+    fn chat_response_streams_to_interaction() {
+        let mut app = App::new(false);
+        app.startup_phase = StartupPhase::Done;
+
+        let id = app.swarm_engine.spawn_agent(
+            "kimi-1".to_string(),
+            AgentRole::Generalist,
+            "moonshot".to_string(),
+            "".to_string(),
+        );
+        let (tx, rx) = mpsc::channel();
+        if let Some(agent) = app.swarm_engine.get_agent_mut(&id) {
+            agent.output = AgentOutput::Chat(ChatOutput {
+                rx: Some(rx),
+                pending_response: String::new(),
+            });
+        }
+
+        tx.send(ChatEvent::Chunk("Hello".to_string())).unwrap();
+        app.drain_chat_responses();
+
+        assert!(
+            app.interaction.iter().any(|m| {
+                m.voice == Voice::Agent && m.text.contains("kimi-1: Hello")
+            }),
+            "first chunk should appear in chat panel: {:?}",
+            app.interaction
+        );
+
+        tx.send(ChatEvent::Chunk(" world".to_string())).unwrap();
+        tx.send(ChatEvent::Done).unwrap();
+        app.drain_chat_responses();
+
+        assert!(
+            app.interaction.iter().any(|m| {
+                m.voice == Voice::Agent && m.text.contains("kimi-1: Hello world")
+            }),
+            "accumulated response should appear in chat panel: {:?}",
+            app.interaction
+        );
     }
 }
