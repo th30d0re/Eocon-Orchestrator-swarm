@@ -1,0 +1,67 @@
+# Agent runner image for Eocon-Orchestrator-swarm.
+# Provides a Linux environment capable of executing arbitrary agent commands
+# (bash, python, rust, and optionally swift) inside an Apple Container Machine.
+# Build with:
+#   container build -f deploy/Containerfile.agent-runner -t eocon-agent-runner:latest .
+
+FROM python:3.11-slim
+
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONPATH=/app
+
+# Make cargo-installed binaries available without typing the full path.
+ENV PATH=/root/.cargo/bin:${PATH}
+
+# Offline mode defaults. Set EOCON_OFFLINE=1 in client configs to prefer
+# cached or local resources and avoid network fetches. CARGO_HOME and
+# RUSTUP_HOME point to predictable paths so host volumes can cache state.
+ENV EOCON_OFFLINE=0
+ENV CARGO_HOME=/root/.cargo
+ENV RUSTUP_HOME=/root/.rustup
+
+# Install system dependencies.
+# sysvinit-core is required because Apple Container Machines boot with
+# /sbin/init; without an init system the machine cannot start.
+# build-essential, ca-certificates, curl, git, and ffmpeg cover common
+# agent build/media tasks. python3 is already present in the base image.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        curl \
+        ffmpeg \
+        git \
+        sysvinit-core \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install the Rust toolchain via rustup. Use the minimal profile to keep the
+# image size reasonable; agents can install extra components or targets at
+# runtime through rustup.
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
+        --default-toolchain stable \
+        --profile minimal \
+    && rustup --version \
+    && cargo --version \
+    && rustc --version
+
+# Optional Swift toolchain. Default is false to avoid a large layer when
+# agents do not need Swift. Enable with:
+#   container build --build-arg INSTALL_SWIFT=true -f deploy/Containerfile.agent-runner -t eocon-agent-runner:latest .
+ARG INSTALL_SWIFT=false
+ARG SWIFT_VERSION=6.0.3
+RUN if [ "$INSTALL_SWIFT" = "true" ]; then \
+        SWIFT_URL="https://download.swift.org/swift-${SWIFT_VERSION}-release/debian12/swift-${SWIFT_VERSION}-RELEASE/swift-${SWIFT_VERSION}-RELEASE-debian12-aarch64.tar.gz"; \
+        curl -fsSL "${SWIFT_URL}" -o /tmp/swift.tar.gz \
+        && tar -xzf /tmp/swift.tar.gz -C /usr/local --strip-components=1 \
+        && rm /tmp/swift.tar.gz \
+        && swift --version; \
+    fi
+
+WORKDIR /app
+
+# In Apple Container Machine mode the machine boots /sbin/init directly.
+# For ephemeral container runs, override the entrypoint to /bin/bash or
+# pass a command; CMD defaults to an interactive shell.
+ENTRYPOINT ["/sbin/init"]
+CMD ["/bin/bash"]
