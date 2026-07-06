@@ -1645,13 +1645,28 @@ Recommendation: default to the **MLX-native path for the nightly fine-tune→eva
 - **Rollback trigger.** If the new model underperforms the previous checkpoint on the local benchmark, automatically roll back the active model weights and log the regression.
 - **v1 groundwork:** define an `EvaluationResult` type and a `ModelRegistry` trait whose registry entries are `.aimodel` artifacts served via the `coreai` provider. Rollback swaps the active/specialized `.aimodel` and clears the stale `AIModelCache` entry. The orchestrator should know how to report and compare scores, but the actual MLX/QLoRA harness and conversion pipeline are out of scope for v1.
 
-### 6. Sandboxing with Apple Container Machines (v2)
+### 6. Sandboxing with Apple Container Machines (v2) — implemented
 
-Sandboxing is back to **v2** after architecture review. It will get its own dedicated `.plan.mdx` file before implementation. v1 only lays the groundwork:
+The v2 sandbox backend is now implemented. The `ContainerMachineRunner` executes
+agent commands inside Apple Container Machines, while the PTY runner remains the
+default. See the dedicated port plan at
+`plans/port_custom_mcp_to_apple_containerization.plan.mdx` and the runbook at
+`docs/CONTAINER_SANDBOX.md` for usage. Key files:
 
-- The `AgentRunner` trait (`agents/runner.rs`) abstracts `PtyRunner`; a `ContainerMachineRunner` backend will be added in v2.
-- `kill_child` and cleanup paths are robust in v1 so the v2 transition is localized.
-- The CLI/config surface in v1 should not hard-code PTY assumptions; leave room for a backend selector (`pty` vs. `container`) in v2.
+- `orchestrator/src/agents/sandbox.rs` — `ContainerMachineRunner` implementation.
+- `orchestrator/src/agents/runner.rs` — `AgentRunner` trait and `PtyRunner`.
+- `orchestrator/src/app.rs` — backend selection (`--runner pty|container`).
+- `orchestrator/src/lib.rs` and `orchestrator/src/config.rs` — CLI flag and config.
+- `orchestrator/deploy/Containerfile.agent-runner` and
+  `orchestrator/deploy/run-eocon-agent-runner.sh` — image packaging.
+- `orchestrator/tests/container_runner_test.rs` — integration tests for machine
+  lifecycle and no-ghost-VM cleanup.
+
+v1 groundwork that enabled this:
+
+- The `AgentRunner` trait (`agents/runner.rs`) abstracts `PtyRunner`; the `ContainerMachineRunner` backend plugs into the same trait.
+- `kill_child` and cleanup paths were already robust, so the v2 transition stayed localized.
+- The CLI/config surface in v1 left room for a backend selector (`pty` vs. `container`).
 
 **Verified prerequisites (from the sibling Apple Containerization port).** The Apple `container` CLI is already installed and proven on the dev Mac — `container CLI version 1.0.0 (commit ee848e3)` at `/usr/local/bin/container`, with a working `container machine` workflow built and run in `tulu/external/URL-to-Text/Python_MVP/deploy/run-apple-container-video-mcp.sh`. The v2 backend should target this real surface, not the narrative examples in earlier drafts:
 
@@ -1701,7 +1716,7 @@ Note that inference never runs in a guest (no GPU or ANE in the Linux VM); every
 4. Implement pre/post safety hooks in `PolicyEngine` (the deny-list pre/post pattern from the Foundation Models safety guide).
 5. Use trait-based `AgentRunner` for PTY spawning, with a clear extension point for a container backend.
 6. Define `EvaluationResult` and `ModelRegistry` shapes.
-7. Keep `ContainerMachineRunner` as a v2 deliverable with its own plan; v2 topology is VM-per-risk-tier.
+7. Implement `ContainerMachineRunner` as a v2 backend with VM-per-risk-tier topology; completed and linked from `docs/CONTAINER_SANDBOX.md`.
 8. Add an explicit `VerifierVerdict` schema (was implicit) so the verifier returns a typed verdict.
 9. Make the watchdog's terminal-vs-stalled call pluggable via an `OutcomeClassifier` trait + `AgentOutcome`/`TerminalKind`, so v2 can map `refusal`/`guardrailViolation`/exit-11 to non-retryable terminals without engine changes.
 10. Derive memory/concurrency budgets at runtime (`GPU.maxRecommendedWorkingSetBytes()`) rather than hardcoding, so the swarm scales from the 64 GB dev box to a 512 GB M3 Ultra unchanged.

@@ -30,7 +30,15 @@ cargo build --release
 
 # Headless instance — no TUI, controlled entirely via the CLI
 ./target/release/eos serve --name my-swarm
+
+# Run agents inside Apple Container Machines (requires the container CLI)
+./target/release/eos --runner container
 ```
+
+The `--runner pty|container` flag selects the execution backend. `pty` is the
+default and runs commands on the host; `container` runs them inside Linux
+micro-VMs. See `docs/CONTAINER_SANDBOX.md` for image build, machine topology,
+and tuning.
 
 ## CLI control plane
 
@@ -126,6 +134,6 @@ Forked from the Foundation Orchestrator (`Eocon-Foundation-V1/.Foundation/Agents
 ## v2 roadmap
 
 - Real Core AI / MLX inference in `localmodel-lm`
-- Apple Container Machine sandboxing (`ContainerMachineRunner`)
+- Apple Container Machine sandboxing (`ContainerMachineRunner`) — implemented; see `docs/CONTAINER_SANDBOX.md`
 - MLX QLoRA fine-tune → eval → rollback loop
 - Guided generation for gists/verdicts via Foundation Models

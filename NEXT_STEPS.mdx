@@ -55,12 +55,16 @@ plans/                   # design spec + Apple containerization port plan
 ### Rust orchestrator
 ```bash
 cd orchestrator
-cargo test        # 42 tests pass (41 unit + 1 integration)
+cargo test        # unit tests + integration tests pass
+cargo test container_runner  # container-machine lifecycle tests (skip if container CLI missing)
 cargo run -- --swarm-demo     # UI demo, no model cost
 
 # Install to PATH (places the binary in ~/.cargo/bin)
 cargo install --path .
 eos --help
+
+# Container-machine sandboxing (requires Apple container CLI + image built)
+eos --runner container
 ```
 
 Inside the TUI:
@@ -192,6 +196,10 @@ fine, so it is the stale downloader adapter, not the migration.
    10 unit/integration tests; no UI render tests).
 6. **Parse the BuildAgent/TestAgent `--json` envelope** in `src/agents/swift.rs` into
    `AgentOutput` (today it spawns via PTY and relies on the watchdog exit-code path).
+7. **Apple Container Machine sandboxing** — implemented. The `--runner pty|container` flag,
+   `ContainerMachineRunner`, and `eocon-agent-runner` image are in place. Run
+   `cd orchestrator && cargo test container_runner` to verify pooled/dedicated machine
+   lifecycle and no ghost VMs. See `docs/CONTAINER_SANDBOX.md` for the runbook.
 
 ## 10. Working agreements / gotchas
 
