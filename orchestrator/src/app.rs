@@ -28,6 +28,15 @@ pub struct InteractionMessage {
     pub text: String,
 }
 
+/// Where a submitted input line came from: the TUI prompt or the CLI
+/// control socket. Remote lines are echoed with a marker so anyone watching
+/// the TUI or dashboard can see what an external controller is doing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InputSource {
+    Local,
+    Remote,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct SlashSubcommand {
     pub name: &'static str,
@@ -179,11 +188,20 @@ pub enum StartupPhase {
     Done,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FocusedPane {
+    #[default]
+    Chat,
+    Workflow,
+    Models,
+}
+
 pub struct App {
     pub swarm_phase: SwarmPhase,
     pub swarm_engine: SwarmEngine,
     pub swarm_layout: SwarmLayout,
     pub startup_phase: StartupPhase,
+    pub focused_pane: FocusedPane,
     pub selected_agent_index: usize,
     pub should_quit: bool,
     pub tick_count: u64,
@@ -200,8 +218,14 @@ pub struct App {
     pub handle_counter: HashMap<String, u32>,
     pub active_variants: HashMap<String, usize>,
     pub interaction: Vec<InteractionMessage>,
+    /// When set, messages pushed via `push_interaction` are also collected
+    /// here so control-socket callers receive the command's replies.
+    pub capture: Option<Vec<InteractionMessage>>,
     pub streaming_interaction_indices: HashMap<String, usize>,
-    pub interaction_scroll: u16,
+    pub chat_scroll: u16,
+    pub workflow_scroll: u16,
+    pub models_scroll: u16,
+    pub chat_auto_scroll: bool,
     pub cwd: PathBuf,
     pub project_dir: PathBuf,
     pub current_provider: Option<String>,
@@ -225,6 +249,7 @@ impl App {
             // The animated splash now runs as a blocking pre-loop sequence in `lib::run`
             // (see ui/startup.rs), so the in-loop splash starts already Done.
             startup_phase: StartupPhase::Done,
+            focused_pane: FocusedPane::Chat,
             selected_agent_index: 0,
             should_quit: false,
             tick_count: 0,
@@ -241,8 +266,12 @@ impl App {
             handle_counter: HashMap::new(),
             active_variants: HashMap::new(),
             interaction: Vec::new(),
+            capture: None,
             streaming_interaction_indices: HashMap::new(),
-            interaction_scroll: 0,
+            chat_scroll: 0,
+            workflow_scroll: 0,
+            models_scroll: 0,
+            chat_auto_scroll: true,
             cwd: cwd.clone(),
             project_dir,
             current_provider: Some("anthropic".to_string()),
@@ -288,6 +317,7 @@ impl App {
                     self.accept_picker();
                 } else {
                     self.swarm_layout = self.swarm_layout.next();
+                    self.clamp_focus_to_layout();
                 }
             }
             Action::ShiftTab => {
@@ -325,6 +355,7 @@ impl App {
                     return;
                 }
                 self.swarm_layout = self.swarm_layout.next();
+                self.clamp_focus_to_layout();
             }
             Action::InputChar(c) => {
                 if self.startup_phase != StartupPhase::Done {
@@ -381,17 +412,11 @@ impl App {
                     self.accept_mention_picker();
                 } else {
                     let cmd = self.input_buffer.trim().to_string();
-                    if !cmd.is_empty() {
-                        if cmd.starts_with('/') {
-                            self.handle_command(&cmd);
-                        } else {
-                            self.handle_natural_input(&cmd);
-                        }
-                    }
+                    self.submit_line(&cmd, InputSource::Local);
                     self.input_buffer.clear();
                     self.input_cursor = 0;
                 }
-                self.interaction_scroll = 0;
+                self.chat_auto_scroll = true;
             }
             Action::PickerUp => {
                 if self.startup_phase != StartupPhase::Done {
@@ -401,6 +426,8 @@ impl App {
                     self.picker_selected -= 1;
                 } else if self.mention_picker_open && self.mention_picker_selected > 0 {
                     self.mention_picker_selected -= 1;
+                } else {
+                    self.scroll_focused_pane(1);
                 }
             }
             Action::PickerDown => {
@@ -413,19 +440,27 @@ impl App {
                     && self.mention_picker_selected + 1 < self.mention_picker_filtered.len()
                 {
                     self.mention_picker_selected += 1;
+                } else {
+                    self.scroll_focused_pane(-1);
                 }
+            }
+            Action::FocusLeft | Action::FocusRight => {
+                if self.startup_phase != StartupPhase::Done {
+                    return;
+                }
+                self.cycle_focus(action == Action::FocusRight);
             }
             Action::ScrollUp => {
                 if self.startup_phase != StartupPhase::Done {
                     return;
                 }
-                self.interaction_scroll = self.interaction_scroll.saturating_sub(5);
+                self.scroll_focused_pane(5);
             }
             Action::ScrollDown => {
                 if self.startup_phase != StartupPhase::Done {
                     return;
                 }
-                self.interaction_scroll += 5;
+                self.scroll_focused_pane(-5);
             }
             _ => {}
         }
@@ -449,21 +484,34 @@ impl App {
     /// Update (or create) the chat-panel interaction message that mirrors a streaming agent
     /// response. The message text is prefixed with the agent's display name.
     fn update_streaming_interaction(&mut self, id: &str) {
-        let (name, pending) = if let Some(agent) = self.swarm_engine.get_agent(id) {
+        let (name, pending, state) = if let Some(agent) = self.swarm_engine.get_agent(id) {
             let pending = if let AgentOutput::Chat(chat) = &agent.output {
                 chat.pending_response.clone()
             } else {
                 String::new()
             };
-            (agent.name.clone(), pending)
+            (agent.name.clone(), pending, agent.state)
         } else {
-            (id.to_string(), String::new())
+            (id.to_string(), String::new(), AgentLifecycleState::Idle)
         };
 
-        let text = format!("{}: {}", name, pending);
+        let body = if pending.is_empty() {
+            match state {
+                AgentLifecycleState::Thinking => "thinking...".to_string(),
+                AgentLifecycleState::Acting => "acting...".to_string(),
+                AgentLifecycleState::Preparing => "preparing...".to_string(),
+                _ => pending,
+            }
+        } else {
+            pending
+        };
+
+        let text = format!("{}: {}", name, body);
         if let Some(&idx) = self.streaming_interaction_indices.get(id) {
             if let Some(msg) = self.interaction.get_mut(idx) {
                 msg.text = text;
+                // Don't force auto-scroll here: if the user has scrolled up to
+                // read history, streaming chunks must not yank them to the bottom.
                 return;
             }
         }
@@ -532,26 +580,41 @@ impl App {
                 }
 
                 if let Some(e) = errored {
+                    let name = self
+                        .swarm_engine
+                        .get_agent(&id)
+                        .map(|a| a.name.clone())
+                        .unwrap_or_else(|| id.clone());
                     if let Some(agent) = self.swarm_engine.get_agent_mut(&id) {
+                        agent.last_error = Some(e.clone());
                         agent.set_state(AgentLifecycleState::Failed);
                     }
+                    self.swarm_engine.metrics.record_failure();
                     self.streaming_interaction_indices.remove(&id);
-                    self.interaction.push(InteractionMessage {
-                        voice: Voice::Error,
-                        text: format!("Agent {} error: {}", id, e),
-                    });
+                    self.push_interaction(
+                        Voice::Error,
+                        format!("Agent {} failed: {}", name, e),
+                    );
                 } else if finished {
                     self.streaming_interaction_indices.remove(&id);
                     // Move the accumulated text into memory, complete, then publish a gist.
+                    let mut response_len = 0;
                     if let Some(agent) = self.swarm_engine.get_agent_mut(&id) {
                         let full = if let AgentOutput::Chat(chat) = &mut agent.output {
                             std::mem::take(&mut chat.pending_response)
                         } else {
                             String::new()
                         };
+                        response_len = full.len();
                         agent.append_to_memory("assistant", full.trim_end().to_string());
                         agent.set_state(AgentLifecycleState::Completed);
                     }
+                    // Provider CLIs don't report usage, so approximate at
+                    // ~4 chars/token to keep the metrics panel meaningful.
+                    self.swarm_engine
+                        .metrics
+                        .record_tokens((response_len / 4) as u64);
+                    self.swarm_engine.metrics.record_success();
                     if let Some(gist) = self.swarm_engine.publish_gist(&id) {
                         self.interaction.push(InteractionMessage {
                             voice: Voice::Gist,
@@ -674,6 +737,71 @@ impl App {
         };
     }
 
+    /// Panes that are visible (and therefore focusable/scrollable) in the
+    /// current layout.
+    fn visible_panes(&self) -> Vec<FocusedPane> {
+        match self.swarm_layout {
+            SwarmLayout::ChatWorkflow => vec![FocusedPane::Chat, FocusedPane::Workflow],
+            SwarmLayout::ChatOnly => vec![FocusedPane::Chat],
+            SwarmLayout::WorkflowOnly => vec![FocusedPane::Workflow],
+            SwarmLayout::Models => vec![FocusedPane::Models],
+        }
+    }
+
+    /// Ensure the focused pane is actually visible in the current layout. Called
+    /// after a layout change so scroll/focus input targets a rendered pane.
+    fn clamp_focus_to_layout(&mut self) {
+        let panes = self.visible_panes();
+        if !panes.contains(&self.focused_pane) {
+            if let Some(first) = panes.first() {
+                self.focused_pane = *first;
+            }
+        }
+    }
+
+    /// Cycle focus through the panes visible in the current layout.
+    fn cycle_focus(&mut self, forward: bool) {
+        let panes = self.visible_panes();
+        if panes.is_empty() {
+            return;
+        }
+        if panes.len() == 1 || !panes.contains(&self.focused_pane) {
+            self.focused_pane = panes[0];
+            return;
+        }
+        let current_pos = panes
+            .iter()
+            .position(|p| *p == self.focused_pane)
+            .unwrap_or(0);
+        let next_pos = if forward {
+            (current_pos + 1) % panes.len()
+        } else {
+            (current_pos + panes.len() - 1) % panes.len()
+        };
+        self.focused_pane = panes[next_pos];
+    }
+
+    /// Scroll the currently focused pane by `delta` lines.
+    /// Positive values scroll up (away from the bottom); negative values scroll down.
+    fn scroll_focused_pane(&mut self, delta: i16) {
+        let delta = delta as i32;
+        match self.focused_pane {
+            FocusedPane::Chat => {
+                let new = (self.chat_scroll as i32 + delta).max(0) as u16;
+                self.chat_scroll = new;
+                self.chat_auto_scroll = false;
+            }
+            FocusedPane::Workflow => {
+                let new = (self.workflow_scroll as i32 + delta).max(0) as u16;
+                self.workflow_scroll = new;
+            }
+            FocusedPane::Models => {
+                let new = (self.models_scroll as i32 + delta).max(0) as u16;
+                self.models_scroll = new;
+            }
+        }
+    }
+
     pub(crate) fn maybe_open_picker(&mut self) {
         if self.startup_phase != StartupPhase::Done {
             return;
@@ -740,7 +868,7 @@ impl App {
                         self.input_buffer.clear();
                         self.input_cursor = 0;
                         self.picker_open = false;
-                        self.handle_command(&full_cmd);
+                        self.submit_line(&full_cmd, InputSource::Local);
                     }
                 }
                 PickerItem::Subcommand(cmd_idx, sub_idx) => {
@@ -898,14 +1026,22 @@ impl App {
             _ => None,
         };
 
+        // Verify the provider is actually usable (CLI present, credentials,
+        // daemon reachable, model on disk) instead of just echoing the mapping.
+        let preflight = match crate::chat::preflight_provider(v.provider, v.model) {
+            Ok(warnings) if warnings.is_empty() => "preflight ok".to_string(),
+            Ok(warnings) => format!("preflight ok, warnings: {}", warnings.join("; ")),
+            Err(e) => format!("preflight FAILED: {}", e),
+        };
+
+        let mut out = format!(
+            "@{} → {} ({}); {}",
+            h.handle, v.display_name, v.model, preflight
+        );
         if let Some(name) = runtime {
-            format!(
-                "@{} → {} ({}); runtime reports: {}",
-                h.handle, v.display_name, v.model, name
-            )
-        } else {
-            format!("@{} → {} ({})", h.handle, v.display_name, v.model)
+            out.push_str(&format!("; runtime reports: {}", name));
         }
+        out
     }
 
     fn spawn_local_model_info(&self, backend: &str) -> Option<String> {
@@ -941,11 +1077,54 @@ impl App {
         text.lines().next().map(|s| s.to_string())
     }
 
+    /// Push a message to the interaction log, mirroring it into the active
+    /// capture buffer (if any) so control-socket callers see command replies.
+    pub fn push_interaction(&mut self, voice: Voice, text: impl Into<String>) {
+        let msg = InteractionMessage {
+            voice,
+            text: text.into(),
+        };
+        if let Some(buf) = &mut self.capture {
+            buf.push(msg.clone());
+        }
+        self.interaction.push(msg);
+    }
+
+    pub fn begin_capture(&mut self) {
+        self.capture = Some(Vec::new());
+    }
+
+    pub fn take_capture(&mut self) -> Vec<InteractionMessage> {
+        self.capture.take().unwrap_or_default()
+    }
+
+    /// Submit one input line exactly as the TUI prompt would: slash commands
+    /// dispatch to the command handlers, anything else is natural input.
+    pub fn submit_line(&mut self, line: &str, source: InputSource) {
+        let cmd = line.trim();
+        if cmd.is_empty() {
+            return;
+        }
+        match source {
+            InputSource::Local => self.push_interaction(Voice::User, cmd.to_string()),
+            InputSource::Remote => {
+                // Echo remote commands for TUI/dashboard observers only —
+                // bypass the capture buffer so the CLI caller doesn't get
+                // its own command back in the response.
+                self.interaction.push(InteractionMessage {
+                    voice: Voice::System,
+                    text: format!("cli> {}", cmd),
+                });
+            }
+        }
+        if cmd.starts_with('/') {
+            crate::swarm::commands::dispatch(self, cmd);
+        } else {
+            self.handle_natural_input(cmd);
+        }
+    }
+
     fn handle_natural_input(&mut self, input: &str) {
-        self.interaction.push(InteractionMessage {
-            voice: Voice::User,
-            text: input.to_string(),
-        });
         let mentions = crate::model_registry::parse_mentions(input);
         if mentions.is_empty() {
             self.swarm_engine.run_swarm_task(input);
@@ -1005,13 +1184,6 @@ impl App {
         self.swarm_phase = SwarmPhase::Running;
     }
 
-    fn handle_command(&mut self, cmd: &str) {
-        self.interaction.push(InteractionMessage {
-            voice: Voice::User,
-            text: cmd.to_string(),
-        });
-        crate::swarm::commands::dispatch(self, cmd);
-    }
 }
 
 pub fn detect_project_dir(cwd: &Path) -> PathBuf {
@@ -1035,7 +1207,8 @@ pub fn detect_project_dir(cwd: &Path) -> PathBuf {
 mod tests {
     use std::sync::mpsc;
 
-    use crate::app::{App, StartupPhase};
+    use crate::action::Action;
+    use crate::app::{App, FocusedPane, StartupPhase};
     use crate::chat::ChatEvent;
     use crate::swarm::agent::{AgentOutput, AgentRole, ChatOutput};
     use crate::ui::theme::Voice;
@@ -1080,6 +1253,108 @@ mod tests {
             }),
             "accumulated response should appear in chat panel: {:?}",
             app.interaction
+        );
+    }
+
+    #[test]
+    fn focus_cycles_visible_panes() {
+        let mut app = App::new(false);
+        app.startup_phase = StartupPhase::Done;
+
+        // ChatWorkflow starts focused on Chat.
+        assert_eq!(app.focused_pane, FocusedPane::Chat);
+        app.update(Action::FocusRight);
+        assert_eq!(app.focused_pane, FocusedPane::Workflow);
+        app.update(Action::FocusRight);
+        assert_eq!(app.focused_pane, FocusedPane::Chat);
+        app.update(Action::FocusLeft);
+        assert_eq!(app.focused_pane, FocusedPane::Workflow);
+
+        // Single-pane layouts keep the only valid pane.
+        app.swarm_layout = crate::app::SwarmLayout::ChatOnly;
+        app.focused_pane = FocusedPane::Workflow;
+        app.update(Action::FocusRight);
+        assert_eq!(app.focused_pane, FocusedPane::Chat);
+    }
+
+    #[test]
+    fn tab_layout_change_reconciles_focus() {
+        let mut app = App::new(false);
+        app.startup_phase = StartupPhase::Done;
+
+        // Focus Workflow in the split layout, then cycle layouts with Tab until
+        // we land on a layout that doesn't contain Workflow.
+        app.focused_pane = FocusedPane::Workflow;
+        for _ in 0..4 {
+            app.update(Action::Tab);
+            assert!(
+                app.visible_panes().contains(&app.focused_pane),
+                "focus {:?} must stay valid in layout {:?}",
+                app.focused_pane,
+                app.swarm_layout
+            );
+        }
+    }
+
+    #[test]
+    fn scroll_affects_focused_pane() {
+        let mut app = App::new(false);
+        app.startup_phase = StartupPhase::Done;
+
+        app.focused_pane = FocusedPane::Workflow;
+        app.update(Action::ScrollUp);
+        assert_eq!(app.workflow_scroll, 5);
+        assert_eq!(app.chat_scroll, 0);
+
+        app.focused_pane = FocusedPane::Chat;
+        app.update(Action::ScrollDown);
+        // chat_scroll stays 0 because of saturating_sub, but auto-scroll should disable.
+        assert!(!app.chat_auto_scroll);
+    }
+
+    #[test]
+    fn arrow_keys_scroll_when_picker_closed() {
+        let mut app = App::new(false);
+        app.startup_phase = StartupPhase::Done;
+        app.focused_pane = FocusedPane::Chat;
+        app.picker_open = false;
+        app.mention_picker_open = false;
+
+        app.update(Action::PickerUp);
+        assert_eq!(app.chat_scroll, 1);
+        assert!(!app.chat_auto_scroll);
+
+        app.update(Action::PickerDown);
+        assert_eq!(app.chat_scroll, 0);
+    }
+
+    #[test]
+    fn streaming_preserves_manual_scroll() {
+        let mut app = App::new(false);
+        app.startup_phase = StartupPhase::Done;
+        // User has scrolled up to read history.
+        app.chat_auto_scroll = false;
+
+        let id = app.swarm_engine.spawn_agent(
+            "kimi-1".to_string(),
+            AgentRole::Generalist,
+            "moonshot".to_string(),
+            "".to_string(),
+        );
+        let (tx, rx) = mpsc::channel();
+        if let Some(agent) = app.swarm_engine.get_agent_mut(&id) {
+            agent.output = AgentOutput::Chat(ChatOutput {
+                rx: Some(rx),
+                pending_response: String::new(),
+            });
+        }
+
+        tx.send(ChatEvent::Chunk("x".to_string())).unwrap();
+        app.drain_chat_responses();
+
+        assert!(
+            !app.chat_auto_scroll,
+            "streaming must not yank a user who scrolled up back to the bottom"
         );
     }
 }

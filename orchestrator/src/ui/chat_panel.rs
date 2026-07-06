@@ -1,27 +1,54 @@
 use ratatui::{
+    layout::Rect,
     style::{Color, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph, Wrap},
+    widgets::{Block, Borders, Paragraph, ScrollbarState, Wrap},
 };
 
 use crate::app::{App, InteractionMessage};
-use crate::ui::theme::Voice;
+use crate::ui::theme::{self, Voice};
 
-pub fn render(app: &App) -> Paragraph<'_> {
+pub fn render(app: &App, area: Rect, is_focused: bool) -> (Paragraph<'_>, ScrollbarState) {
     let lines: Vec<Line> = app
         .interaction
         .iter()
         .flat_map(|msg| message_lines(msg))
         .collect();
 
-    Paragraph::new(lines)
+    let content_lines = lines.len();
+    let visible_lines = area.height.saturating_sub(2) as usize;
+    let max_scroll = content_lines.saturating_sub(visible_lines);
+    let scroll = if app.chat_auto_scroll {
+        0
+    } else {
+        (app.chat_scroll as usize).min(max_scroll)
+    };
+
+    // Scroll offset is measured from the bottom (0 = show the most recent content).
+    let end = content_lines.saturating_sub(scroll);
+    let start = end.saturating_sub(visible_lines);
+    let visible = &lines[start..end];
+
+    let border_color = if is_focused {
+        theme::ACCENT
+    } else {
+        Color::DarkGray
+    };
+
+    let paragraph = Paragraph::new(visible.to_vec())
         .block(
             Block::default()
-                .title("Chat / Verified Gists")
+                .title(" Chat / Verified Gists ")
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::DarkGray)),
+                .border_style(Style::default().fg(border_color)),
         )
-        .wrap(Wrap { trim: true })
+        .wrap(Wrap { trim: true });
+
+    let scrollbar_state = ScrollbarState::new(content_lines)
+        .position(content_lines.saturating_sub(visible_lines + scroll))
+        .viewport_content_length(visible_lines);
+
+    (paragraph, scrollbar_state)
 }
 
 fn message_lines(msg: &InteractionMessage) -> Vec<Line<'_>> {
@@ -90,7 +117,8 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
         terminal
             .draw(|frame| {
-                frame.render_widget(render(&app), frame.area());
+                let (paragraph, _) = render(&app, frame.area(), false);
+                frame.render_widget(paragraph, frame.area());
             })
             .unwrap();
 

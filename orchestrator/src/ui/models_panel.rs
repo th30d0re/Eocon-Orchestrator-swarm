@@ -1,14 +1,15 @@
 use ratatui::{
+    layout::Rect,
     style::{Color, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph, Wrap},
+    widgets::{Block, Borders, Paragraph, ScrollbarState, Wrap},
 };
 
 use crate::app::App;
 use crate::model_registry::{active_variant, MODEL_HANDLES};
 use crate::ui::theme;
 
-pub fn render(app: &App) -> Paragraph<'_> {
+pub fn render(app: &App, area: Rect, is_focused: bool) -> (Paragraph<'_>, ScrollbarState) {
     let mut lines: Vec<Line> = Vec::new();
 
     lines.push(Line::from(vec![
@@ -84,12 +85,34 @@ pub fn render(app: &App) -> Paragraph<'_> {
         ),
     ]));
 
-    Paragraph::new(lines)
+    let content_lines = lines.len();
+    let visible_lines = area.height.saturating_sub(2) as usize;
+    let max_scroll = content_lines.saturating_sub(visible_lines);
+    let scroll = (app.models_scroll as usize).min(max_scroll);
+
+    // Scroll offset is measured from the bottom (0 = show the most recent content).
+    let end = content_lines.saturating_sub(scroll);
+    let start = end.saturating_sub(visible_lines);
+    let visible = &lines[start..end];
+
+    let border_color = if is_focused {
+        theme::ACCENT
+    } else {
+        Color::DarkGray
+    };
+
+    let paragraph = Paragraph::new(visible.to_vec())
         .block(
             Block::default()
                 .title(" Models & Providers ")
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::DarkGray)),
+                .border_style(Style::default().fg(border_color)),
         )
-        .wrap(Wrap { trim: false })
+        .wrap(Wrap { trim: false });
+
+    let scrollbar_state = ScrollbarState::new(content_lines)
+        .position(content_lines.saturating_sub(visible_lines + scroll))
+        .viewport_content_length(visible_lines);
+
+    (paragraph, scrollbar_state)
 }

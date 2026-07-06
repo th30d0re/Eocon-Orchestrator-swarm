@@ -55,7 +55,7 @@ plans/                   # design spec + Apple containerization port plan
 ### Rust orchestrator
 ```bash
 cd orchestrator
-cargo test        # 38 tests pass (37 unit + 1 integration)
+cargo test        # 42 tests pass (41 unit + 1 integration)
 cargo run -- --swarm-demo     # UI demo, no model cost
 
 # Install to PATH (places the binary in ~/.cargo/bin)
@@ -73,6 +73,10 @@ Inside the TUI:
 - A **Preview** box above the picker shows usage and available subcommands for the selected item.
 - Type `@` to mention a model (e.g. `@kimi look at X? @claude check it`).
 - Press `Tab` to cycle layouts, including the **Models & Providers** panel.
+- Press `Ctrl+h` / `Ctrl+l` to move focus between visible panes.
+- Press `PageUp` / `PageDown` to scroll the focused pane.
+- The chat panel auto-scrolls to new messages/responses; scroll up manually to disable
+  auto-scroll.
 - Use `↑`/`↓` to navigate pickers and `Tab` or `Enter` to accept.
 
 Model registry:
@@ -227,7 +231,7 @@ Completed items from §9:
 
 Verification:
 
-- `cd orchestrator && cargo test` → 37 unit tests + 1 integration test pass.
+- `cd orchestrator && cargo test` → 41 unit tests + 1 integration test pass.
 - `cd localmodel-lm && swift build` → compiles (fallback paths on the 26.2 SDK).
 - `./scripts/build-mlx.sh` → builds successfully; local-dir load generates real text from the
   fused RootLedger models.

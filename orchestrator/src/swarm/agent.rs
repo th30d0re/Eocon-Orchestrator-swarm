@@ -80,6 +80,9 @@ pub struct AgentInstance {
     pub last_updated: Instant,
     pub risk_tier: RiskLabel,
     pub stall_count: u32,
+    /// Why the last task failed (provider error, spawn failure, …).
+    /// Cleared when a new task starts or the agent restarts.
+    pub last_error: Option<String>,
 }
 
 pub enum AgentOutput {
@@ -119,6 +122,7 @@ impl AgentInstance {
             last_updated: now,
             risk_tier: role.default_risk_tier(),
             stall_count: 0,
+            last_error: None,
         }
     }
 
@@ -137,6 +141,7 @@ impl AgentInstance {
 
     pub fn spawn_chat(&mut self, task: &str) -> ChatRequest {
         self.current_task = Some(task.to_string());
+        self.last_error = None;
         self.set_state(AgentLifecycleState::Thinking);
         self.memory.push_user(task.to_string());
         ChatRequest {
@@ -183,6 +188,7 @@ impl AgentInstance {
         self.set_state(AgentLifecycleState::Idle);
         self.output = AgentOutput::None;
         self.stall_count = 0;
+        self.last_error = None;
     }
 
     pub fn extract_gist(&self) -> Option<GistDraft> {

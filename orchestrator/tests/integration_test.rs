@@ -5,9 +5,9 @@ use predicates::prelude::*;
 
 #[test]
 fn cli_help_works() {
-    let mut cmd = Command::cargo_bin("eocon-swarm").unwrap();
+    let mut cmd = Command::cargo_bin("eos").unwrap();
     cmd.arg("--help");
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("eocon-swarm"));
+        .stdout(predicate::str::contains("swarm orchestrator"));
 }

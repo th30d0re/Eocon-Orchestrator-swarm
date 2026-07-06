@@ -1,4 +1,4 @@
-use crate::app::{App, InteractionMessage, SwarmPhase};
+use crate::app::{App, SwarmPhase};
 use crate::swarm::agent::AgentRole;
 use crate::ui::theme::Voice;
 
@@ -20,10 +20,7 @@ pub fn dispatch(app: &mut App, cmd: &str) {
         "/help" => handle_help(app),
         "/quit" => app.should_quit = true,
         _ => {
-            app.interaction.push(InteractionMessage {
-                voice: Voice::Error,
-                text: format!("Unknown command: {}", parts[0]),
-            });
+            app.push_interaction(Voice::Error, format!("Unknown command: {}", parts[0]));
         }
     }
 }
@@ -65,10 +62,34 @@ fn handle_agent(app: &mut App, args: &[&str]) {
                 }
                 i += 2;
             }
-            let id = app
-                .swarm_engine
-                .spawn_agent(name.clone(), role, provider, model);
+            let id = app.swarm_engine.spawn_agent(
+                name.clone(),
+                role,
+                provider.clone(),
+                model.clone(),
+            );
             reply(app, &format!("Spawned agent {} ({})", name, id));
+            // Validate the provider immediately so a doomed agent is loud at
+            // spawn time instead of failing silently on its first task.
+            match crate::chat::preflight_provider(&provider, &model) {
+                Ok(warnings) => {
+                    for w in warnings {
+                        app.push_interaction(
+                            Voice::Warning,
+                            format!("preflight ({}): {}", provider, w),
+                        );
+                    }
+                }
+                Err(e) => {
+                    app.push_interaction(
+                        Voice::Error,
+                        format!(
+                            "preflight ({}): tasks assigned to {} WILL fail — {}",
+                            provider, name, e
+                        ),
+                    );
+                }
+            }
         }
         "list" => {
             if app.swarm_engine.agents.is_empty() {
@@ -79,13 +100,21 @@ fn handle_agent(app: &mut App, args: &[&str]) {
                     .agents
                     .iter()
                     .map(|a| {
-                        format!(
+                        let mut line = format!(
                             "{} [{}] {:?} - {}",
                             a.name,
                             a.id,
                             a.state,
                             a.current_task.as_deref().unwrap_or("idle")
-                        )
+                        );
+                        if let Some(err) = &a.last_error {
+                            let first = err.lines().next().unwrap_or(err);
+                            line.push_str(&format!(
+                                " — error: {} (full detail: /trace {})",
+                                first, a.name
+                            ));
+                        }
+                        line
                     })
                     .collect();
                 for line in lines {
@@ -288,14 +317,39 @@ fn handle_policy(app: &mut App) {
 }
 
 fn handle_trace(app: &mut App, args: &[&str]) {
-    let id = args.first().copied().unwrap_or("root");
-    reply(
-        app,
-        &format!(
-            "Trace for {}: (in-memory trace tree exported to stderr on exit)",
-            id
-        ),
+    let Some(sel) = args.first().copied() else {
+        reply(app, "Usage: /trace <agent name or id>");
+        return;
+    };
+    let Some(agent) = app
+        .swarm_engine
+        .agents
+        .iter()
+        .find(|a| a.name == sel || a.id == sel)
+    else {
+        reply(app, &format!("Agent {} not found", sel));
+        return;
+    };
+    let mut text = format!(
+        "Trace for {} [{}]:\n\
+         \x20 role: {}   provider: {}   model: {}\n\
+         \x20 state: {:?}   task: {}\n\
+         \x20 alive: {}s   stalls: {}   memory: {} messages",
+        agent.name,
+        agent.id,
+        agent.role.display_name(),
+        agent.provider,
+        agent.model,
+        agent.state,
+        agent.current_task.as_deref().unwrap_or("idle"),
+        agent.elapsed_secs(),
+        agent.stall_count,
+        agent.memory.messages.len(),
     );
+    if let Some(err) = &agent.last_error {
+        text.push_str(&format!("\n  last error:\n{}", err));
+    }
+    reply(app, &text);
 }
 
 fn handle_metrics(app: &mut App) {
@@ -353,6 +407,20 @@ fn handle_model(app: &mut App, args: &[&str]) {
                 let marker = if i == active_idx { " (active)" } else { "" };
                 reply(app, &format!("  {}{} - {}", v.name, marker, v.display_name));
             }
+            // The static table only carries a default; ask the local daemon
+            // what is actually installed.
+            if h.variants.iter().any(|v| v.provider == "ollama") {
+                match crate::chat::ollama_installed_models() {
+                    Some(models) if !models.is_empty() => {
+                        reply(app, "Installed in local Ollama (usable via /agent spawn <name> --provider ollama --model <model>):");
+                        for m in models {
+                            reply(app, &format!("  {}", m));
+                        }
+                    }
+                    Some(_) => reply(app, "Local Ollama is reachable but has no models installed."),
+                    None => reply(app, "Local Ollama API not reachable on localhost:11434."),
+                }
+            }
         }
         "set" => {
             if args.len() < 3 {
@@ -387,10 +455,7 @@ fn handle_model(app: &mut App, args: &[&str]) {
 }
 
 fn reply(app: &mut App, text: &str) {
-    app.interaction.push(InteractionMessage {
-        voice: Voice::Agent,
-        text: text.to_string(),
-    });
+    app.push_interaction(Voice::Agent, text.to_string());
 }
 
 fn parse_role(s: &str) -> AgentRole {

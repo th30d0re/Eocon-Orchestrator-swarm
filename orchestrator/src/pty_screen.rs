@@ -128,6 +128,26 @@ impl PtyScreen {
         Text::from(lines)
     }
 
+    /// The entire buffer (scrollback + live grid) as text, ignoring the
+    /// viewport offset and with trailing blank rows trimmed. Used by panes that
+    /// do their own bottom-anchored windowing, so they can scroll into history.
+    pub fn full_text(&self) -> Text<'_> {
+        let mut rows: Vec<&Vec<Cell>> =
+            Vec::with_capacity(self.scrollback.len() + self.grid.len());
+        rows.extend(self.scrollback.iter());
+        rows.extend(self.grid.iter());
+        // Drop trailing blank rows so a bottom-anchored view isn't padded with
+        // the empty cells that sit below the cursor in the live grid.
+        while rows.len() > 1 && rows.last().map(|r| is_blank_row(r)).unwrap_or(false) {
+            rows.pop();
+        }
+        let lines = rows
+            .into_iter()
+            .map(|row| truncate_line(cells_to_line(row), self.visible_cols))
+            .collect::<Vec<_>>();
+        Text::from(lines)
+    }
+
     pub fn scroll_up(&mut self, count: usize) {
         let max = self.scrollback.len();
         self.scrollback_offset = (self.scrollback_offset + count).min(max);
@@ -337,6 +357,10 @@ impl Perform for PtyScreen {
     fn hook(&mut self, _params: &Params, _intermediates: &[u8], _ignore: bool, _c: char) {}
     fn put(&mut self, _byte: u8) {}
     fn unhook(&mut self) {}
+}
+
+fn is_blank_row(cells: &[Cell]) -> bool {
+    cells.iter().all(|cell| cell.ch == ' ')
 }
 
 fn cells_to_line(cells: &[Cell]) -> Line<'_> {

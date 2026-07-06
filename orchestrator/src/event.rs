@@ -1,7 +1,7 @@
 use std::sync::mpsc::Receiver;
 use std::time::Duration;
 
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers, MouseEventKind};
 
 use crate::action::Action;
 use crate::agents::runner::RunnerMsg;
@@ -28,6 +28,7 @@ impl EventHandler {
             if let Ok(event) = event::read() {
                 match event {
                     Event::Key(key) => return map_key(key),
+                    Event::Mouse(mouse) => return map_mouse(mouse.kind),
                     Event::Resize(cols, rows) => return Action::Resize(cols, rows),
                     _ => {}
                 }
@@ -63,10 +64,21 @@ fn map_key(key: KeyEvent) -> Action {
         KeyCode::PageUp => Action::ScrollUp,
         KeyCode::PageDown => Action::ScrollDown,
         KeyCode::F(1) => Action::ToggleHelp,
+        KeyCode::Char('h') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            Action::FocusLeft
+        }
         KeyCode::Char('l') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            Action::ToggleSwarmLayout
+            Action::FocusRight
         }
         KeyCode::Char(c) => Action::InputChar(c),
+        _ => Action::Tick,
+    }
+}
+
+fn map_mouse(kind: MouseEventKind) -> Action {
+    match kind {
+        MouseEventKind::ScrollUp => Action::ScrollUp,
+        MouseEventKind::ScrollDown => Action::ScrollDown,
         _ => Action::Tick,
     }
 }

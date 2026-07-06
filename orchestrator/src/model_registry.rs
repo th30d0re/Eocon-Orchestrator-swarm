@@ -129,6 +129,18 @@ pub const MODEL_HANDLES: &[ModelHandle] = &[
         }],
     },
     ModelHandle {
+        handle: "traces",
+        display_name: "Trace Replay (offline)",
+        default_variant: 0,
+        variants: &[ModelVariant {
+            name: "fable5-sessions",
+            display_name: "Fable 5 Claude Code session replays",
+            provider: "traces",
+            model: "/Users/emmanuel/.eocon/traces/sessions.jsonl",
+            role: AgentRole::Generalist,
+        }],
+    },
+    ModelHandle {
         handle: "lmstudio",
         display_name: "LM Studio (local)",
         default_variant: 0,

@@ -1,13 +1,15 @@
 use ratatui::{
+    layout::Rect,
     style::{Color, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph, Wrap},
+    widgets::{Block, Borders, Paragraph, ScrollbarState, Wrap},
 };
 
 use crate::app::App;
 use crate::swarm::agent::{AgentLifecycleState, AgentOutput};
+use crate::ui::theme;
 
-pub fn render(app: &App) -> Paragraph<'_> {
+pub fn render(app: &App, area: Rect, is_focused: bool) -> (Paragraph<'_>, ScrollbarState) {
     let mut lines: Vec<Line> = Vec::new();
 
     for (idx, agent) in app.swarm_engine.agents.iter().enumerate() {
@@ -60,7 +62,9 @@ pub fn render(app: &App) -> Paragraph<'_> {
         ]));
         match &agent.output {
             AgentOutput::Pty(pty) => {
-                let text = pty.screen.as_text();
+                // Render the full scrollback so the pane's own bottom-anchored
+                // windowing (workflow_scroll) can scroll back into build history.
+                let text = pty.screen.full_text();
                 for line in text.lines {
                     lines.push(line);
                 }
@@ -113,14 +117,36 @@ pub fn render(app: &App) -> Paragraph<'_> {
         }
     }
 
-    Paragraph::new(lines)
+    let content_lines = lines.len();
+    let visible_lines = area.height.saturating_sub(2) as usize;
+    let max_scroll = content_lines.saturating_sub(visible_lines);
+    let scroll = (app.workflow_scroll as usize).min(max_scroll);
+
+    // Scroll offset is measured from the bottom (0 = show the most recent content).
+    let end = content_lines.saturating_sub(scroll);
+    let start = end.saturating_sub(visible_lines);
+    let visible = &lines[start..end];
+
+    let border_color = if is_focused {
+        theme::ACCENT
+    } else {
+        Color::DarkGray
+    };
+
+    let paragraph = Paragraph::new(visible.to_vec())
         .block(
             Block::default()
-                .title("Workflow")
+                .title(" Workflow ")
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::DarkGray)),
+                .border_style(Style::default().fg(border_color)),
         )
-        .wrap(Wrap { trim: true })
+        .wrap(Wrap { trim: true });
+
+    let scrollbar_state = ScrollbarState::new(content_lines)
+        .position(content_lines.saturating_sub(visible_lines + scroll))
+        .viewport_content_length(visible_lines);
+
+    (paragraph, scrollbar_state)
 }
 
 fn state_color(state: AgentLifecycleState) -> Color {
@@ -152,7 +178,8 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
         terminal
             .draw(|frame| {
-                frame.render_widget(render(&app), frame.area());
+                let (paragraph, _) = render(&app, frame.area(), false);
+                frame.render_widget(paragraph, frame.area());
             })
             .unwrap();
 

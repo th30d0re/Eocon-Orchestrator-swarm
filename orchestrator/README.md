@@ -23,11 +23,78 @@ cargo build --release
 
 ```bash
 # Mock mode for UI validation (no model calls)
-./target/release/eocon-swarm --swarm-demo
+./target/release/eos --swarm-demo
 
-# Normal mode
-./target/release/eocon-swarm
+# Normal mode (TUI)
+./target/release/eos
+
+# Headless instance — no TUI, controlled entirely via the CLI
+./target/release/eos serve --name my-swarm
 ```
+
+## CLI control plane
+
+Every running instance (TUI or headless) exposes its full command surface
+over a Unix control socket (`~/.eocon/run/eos-<pid>.sock`) and registers
+itself in `~/.eocon/instances/`. Anything the TUI can do, the CLI can do —
+so AI models can drive the swarm programmatically while you watch.
+
+```bash
+eos ps                                   # list running instances (--json)
+eos dashboard                            # live TUI dashboard over all instances
+
+# Raw commands — identical to typing into the TUI prompt
+eos exec "/agent spawn worker --role coder"
+eos exec "build the auth module"         # natural input enqueues a swarm task
+eos exec --json "/swarm status"          # machine-readable replies
+
+# Sugar subcommands (same dispatch path as the slash commands)
+eos agent spawn scout --role researcher
+eos agent list
+eos swarm run "map the codebase"
+eos status
+eos gist list
+eos model list
+eos metrics
+eos quit                                 # sends /quit — shuts the instance down
+
+# Full JSON state (agents, gists, metrics, activity log)
+eos snapshot
+```
+
+With multiple instances running, target one with `--instance <name|pid>`
+(`-i`); with a single instance the target is implicit. Flags (`--json`,
+`-i`) go before the command words. Exit code is non-zero when the command
+produced an error reply.
+
+Commands arriving over the socket are echoed into the instance's chat log
+as `cli> <command>`, so the TUI and `eos dashboard` show exactly what an
+external controller (e.g. a model) is doing.
+
+## Trace replay provider (offline)
+
+The `traces` provider replays real Claude Code sessions instead of calling a
+model — deterministic, offline, free. Use it to exercise the full pipeline
+(task → response → gist → verifier → board → metrics) in tests and demos.
+
+```bash
+# One-time: extract replayable sessions from the local
+# Complete-FABLE.5-traces-2M dataset clone (writes ~/.eocon/traces/sessions.jsonl)
+python3 ../scripts/extract_replay_sessions.py
+
+eos model ping traces        # preflight the sessions file
+eos agent spawn replaybot --provider traces --model ~/.eocon/traces/sessions.jsonl
+eos swarm run "any task"     # same prompt always replays the same session
+```
+
+Replayed responses are prefixed `Replayed trace <id>: …` so they can't be
+mistaken for live model output.
+
+## Dashboard
+
+`eos dashboard` shows all live instances (left) and the selected instance's
+phase, agents, gists, metrics, and activity log (right), refreshing every
+second. Keys: `up/down` select instance, `r` refresh, `q` quit.
 
 ## Slash commands
 
