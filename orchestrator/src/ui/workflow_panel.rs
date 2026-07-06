@@ -167,12 +167,13 @@ mod tests {
     use ratatui::Terminal;
 
     use crate::app::App;
+    use crate::config::RunnerBackend;
 
     use super::*;
 
     #[test]
     fn renders_agents_states_and_selection() {
-        let app = App::new(true);
+        let app = App::new(true, RunnerBackend::Pty);
 
         let backend = TestBackend::new(80, 24);
         let mut terminal = Terminal::new(backend).unwrap();

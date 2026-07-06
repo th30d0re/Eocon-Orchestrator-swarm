@@ -279,7 +279,9 @@ fn handle_swarm(app: &mut App, args: &[&str]) {
             reply(app, "Swarm stopped.");
         }
         "reset" => {
-            app.swarm_engine = crate::swarm::engine::SwarmEngine::new(app.project_dir.clone());
+            let runner = app.swarm_engine.runner.clone();
+            app.swarm_engine =
+                crate::swarm::engine::SwarmEngine::new(app.project_dir.clone(), runner);
             app.swarm_phase = SwarmPhase::Idle;
             reply(app, "Swarm reset.");
         }

@@ -89,13 +89,14 @@ mod tests {
     use ratatui::Terminal;
 
     use crate::app::{App, InteractionMessage};
+    use crate::config::RunnerBackend;
     use crate::ui::theme::Voice;
 
     use super::*;
 
     #[test]
     fn renders_interaction_messages() {
-        let mut app = App::new(true);
+        let mut app = App::new(true, RunnerBackend::Pty);
         app.interaction.push(InteractionMessage {
             voice: Voice::User,
             text: "Hello swarm".to_string(),

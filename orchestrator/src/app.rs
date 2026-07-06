@@ -1,9 +1,13 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Instant;
 
 use crate::action::Action;
+use crate::agents::runner::PtyRunner;
+use crate::agents::sandbox::{ContainerMachineRunner, SandboxConfig};
 use crate::agents::swift;
+use crate::config::RunnerBackend;
 use crate::model_registry::{filter_by_prefix, active_variant, Mention, MODEL_HANDLES};
 use crate::policy::config::{load_global_policy, load_user_policy};
 use crate::policy::engine::PolicyEngine;
@@ -234,13 +238,30 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(mock_mode: bool) -> Self {
+    pub fn new(mock_mode: bool, runner_backend: RunnerBackend) -> Self {
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         let project_dir = detect_project_dir(&cwd);
         let global = load_global_policy(&project_dir);
         let user = load_user_policy();
+
+        let runner: Arc<dyn crate::agents::runner::AgentRunner> = match runner_backend {
+            RunnerBackend::Pty => Arc::new(PtyRunner),
+            RunnerBackend::Container => {
+                if Self::container_cli_available() {
+                    Arc::new(ContainerMachineRunner::new(
+                        SandboxConfig::default(),
+                        project_dir.clone(),
+                    ))
+                } else {
+                    eprintln!(
+                        "Warning: --runner container requested but the Apple container CLI was not found; falling back to pty"
+                    );
+                    Arc::new(PtyRunner)
+                }
+            }
+        };
         let engine =
-            SwarmEngine::new(project_dir.clone()).with_policy(PolicyEngine::new(global, user));
+            SwarmEngine::new(project_dir.clone(), runner).with_policy(PolicyEngine::new(global, user));
 
         let mut app = Self {
             swarm_phase: SwarmPhase::Idle,
@@ -289,6 +310,14 @@ impl App {
         }
 
         app
+    }
+
+    fn container_cli_available() -> bool {
+        std::process::Command::new("container")
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
     }
 
     pub fn elapsed_secs(&self) -> u64 {
@@ -1210,12 +1239,13 @@ mod tests {
     use crate::action::Action;
     use crate::app::{App, FocusedPane, StartupPhase};
     use crate::chat::ChatEvent;
+    use crate::config::RunnerBackend;
     use crate::swarm::agent::{AgentOutput, AgentRole, ChatOutput};
     use crate::ui::theme::Voice;
 
     #[test]
     fn chat_response_streams_to_interaction() {
-        let mut app = App::new(false);
+        let mut app = App::new(false, RunnerBackend::Pty);
         app.startup_phase = StartupPhase::Done;
 
         let id = app.swarm_engine.spawn_agent(
@@ -1258,7 +1288,7 @@ mod tests {
 
     #[test]
     fn focus_cycles_visible_panes() {
-        let mut app = App::new(false);
+        let mut app = App::new(false, RunnerBackend::Pty);
         app.startup_phase = StartupPhase::Done;
 
         // ChatWorkflow starts focused on Chat.
@@ -1279,7 +1309,7 @@ mod tests {
 
     #[test]
     fn tab_layout_change_reconciles_focus() {
-        let mut app = App::new(false);
+        let mut app = App::new(false, RunnerBackend::Pty);
         app.startup_phase = StartupPhase::Done;
 
         // Focus Workflow in the split layout, then cycle layouts with Tab until
@@ -1298,7 +1328,7 @@ mod tests {
 
     #[test]
     fn scroll_affects_focused_pane() {
-        let mut app = App::new(false);
+        let mut app = App::new(false, RunnerBackend::Pty);
         app.startup_phase = StartupPhase::Done;
 
         app.focused_pane = FocusedPane::Workflow;
@@ -1314,7 +1344,7 @@ mod tests {
 
     #[test]
     fn arrow_keys_scroll_when_picker_closed() {
-        let mut app = App::new(false);
+        let mut app = App::new(false, RunnerBackend::Pty);
         app.startup_phase = StartupPhase::Done;
         app.focused_pane = FocusedPane::Chat;
         app.picker_open = false;
@@ -1330,7 +1360,7 @@ mod tests {
 
     #[test]
     fn streaming_preserves_manual_scroll() {
-        let mut app = App::new(false);
+        let mut app = App::new(false, RunnerBackend::Pty);
         app.startup_phase = StartupPhase::Done;
         // User has scrolled up to read history.
         app.chat_auto_scroll = false;

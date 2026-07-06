@@ -105,6 +105,8 @@ fn wrap_text(text: &str, width: usize) -> Vec<String> {
 mod tests {
     use super::*;
 
+    use crate::config::RunnerBackend;
+
     #[test]
     fn wrap_text_splits_long_lines() {
         let lines = wrap_text("hello world this is a test", 10);
@@ -113,13 +115,13 @@ mod tests {
 
     #[test]
     fn input_height_includes_border() {
-        let app = App::new(true);
+        let app = App::new(true, RunnerBackend::Pty);
         assert_eq!(input_height(&app, 80), 3);
     }
 
     #[test]
     fn input_height_accounts_for_prompt_prefix() {
-        let mut app = App::new(true);
+        let mut app = App::new(true, RunnerBackend::Pty);
         // Width 20 -> content width 18 -> text width 16 (after "> ").
         // 40 ASCII chars with spaces will wrap to 3 text lines + 2 border rows = 5.
         app.input_buffer = "a ".repeat(20).trim_end().to_string();

@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::agents::runner::{AgentCmd, AgentRunner, PtyRunner, PtySize};
+use crate::agents::runner::{AgentCmd, AgentRunner, PtySize};
 use crate::chat::spawn_chat_request;
 use crate::observability::metrics::SwarmMetrics;
 use crate::policy::engine::PolicyEngine;
@@ -24,13 +24,13 @@ pub struct SwarmEngine {
 }
 
 impl SwarmEngine {
-    pub fn new(project_dir: PathBuf) -> Self {
+    pub fn new(project_dir: PathBuf, runner: Arc<dyn AgentRunner>) -> Self {
         Self {
             agents: Vec::new(),
             gist_board: GistBoard::new(),
             task_queue: TaskQueue::new(),
             policy_engine: PolicyEngine::default(),
-            runner: Arc::new(PtyRunner),
+            runner,
             project_dir,
             metrics: SwarmMetrics::default(),
         }
@@ -56,7 +56,7 @@ impl SwarmEngine {
 
     pub fn pause_agent(&mut self, id: &str) -> bool {
         if let Some(a) = self.agents.iter_mut().find(|a| a.id == id) {
-            a.pause();
+            a.pause(self.runner.as_ref());
             true
         } else {
             false

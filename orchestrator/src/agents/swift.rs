@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use crate::agents::runner::{AgentCmd, PtySize};
+use crate::policy::policy::RiskLabel;
 use crate::swarm::agent::{AgentInstance, AgentLifecycleState, AgentOutput};
 use crate::swarm::engine::SwarmEngine;
 
@@ -151,6 +152,7 @@ pub fn build_agent_cmd(
         args,
         env: Vec::new(),
         cwd: None,
+        risk_tier: RiskLabel::Medium,
     }
 }
 
@@ -195,6 +197,7 @@ pub fn test_agent_cmd(
         args,
         env: Vec::new(),
         cwd: None,
+        risk_tier: RiskLabel::Medium,
     }
 }
 

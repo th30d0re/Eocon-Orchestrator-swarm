@@ -38,6 +38,7 @@ fn main() -> std::process::ExitCode {
             model,
             verbose,
             name,
+            runner_backend: args.runner,
         })),
         Some(EosCommand::Dashboard) => {
             install_panic_hook();

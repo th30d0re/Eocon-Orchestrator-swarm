@@ -2,6 +2,7 @@ pub mod action;
 pub mod agents;
 pub mod app;
 pub mod chat;
+pub mod config;
 pub mod control;
 pub mod event;
 pub mod mock;
@@ -16,6 +17,7 @@ pub mod ui;
 use color_eyre::{eyre::WrapErr, Result};
 
 use crate::app::App;
+use crate::config::{AppConfig, RunnerBackend};
 use crate::event::EventHandler;
 use crate::tui::init_terminal;
 
@@ -28,10 +30,31 @@ pub struct Config {
     pub verbose: bool,
     /// Instance name shown in `eos ps` and the dashboard.
     pub name: Option<String>,
+    pub runner_backend: RunnerBackend,
 }
 
 impl Config {
     pub fn build(args: CliArgs) -> Result<Self> {
+        // CLI flag wins, then on-disk config, then env, then default Pty.
+        // Because the CLI argument has a default value, we treat an explicit
+        // `--runner container` as authoritative; when it resolves to Pty we
+        // still give config/env a chance to override the default.
+        let mut runner_backend = args.runner;
+        if runner_backend == RunnerBackend::Pty {
+            if let Ok(app_config) = confy::load::<AppConfig>("eocon-swarm", None) {
+                if app_config.runner_backend != RunnerBackend::Pty {
+                    runner_backend = app_config.runner_backend;
+                }
+            }
+            if runner_backend == RunnerBackend::Pty {
+                if let Ok(val) = std::env::var("EOCON_RUNNER_BACKEND") {
+                    if let Some(b) = RunnerBackend::parse(&val) {
+                        runner_backend = b;
+                    }
+                }
+            }
+        }
+
         Ok(Self {
             swarm_demo: args.swarm_demo,
             project: args.project,
@@ -39,6 +62,7 @@ impl Config {
             model: args.model,
             verbose: args.verbose,
             name: args.name,
+            runner_backend,
         })
     }
 }
@@ -97,6 +121,10 @@ pub struct CliArgs {
     /// Instance name shown in `eos ps` and the dashboard
     #[arg(long)]
     pub name: Option<String>,
+
+    /// Execution backend for agent commands: pty (default) or container.
+    #[arg(long, default_value = "pty")]
+    pub runner: RunnerBackend,
 
     #[command(subcommand)]
     pub command: Option<EosCommand>,
@@ -228,7 +256,7 @@ fn default_instance_name(project_dir: &std::path::Path) -> String {
 }
 
 fn build_app(config: &Config) -> App {
-    let mut app = App::new(config.swarm_demo);
+    let mut app = App::new(config.swarm_demo, config.runner_backend);
     if let Some(provider) = &config.provider {
         app.current_provider = Some(provider.clone());
     }

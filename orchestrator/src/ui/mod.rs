@@ -85,13 +85,15 @@ mod tests {
     use ratatui::backend::TestBackend;
     use ratatui::Terminal;
 
+    use crate::config::RunnerBackend;
+
     use super::*;
 
     #[test]
     fn swarm_render_smoke() {
         let backend = TestBackend::new(80, 24);
         let mut terminal = Terminal::new(backend).unwrap();
-        let mut app = App::new(true);
+        let mut app = App::new(true, RunnerBackend::Pty);
         app.startup_phase = crate::app::StartupPhase::Done;
         terminal.draw(|frame| render_swarm(frame, &app)).unwrap();
         let buf = terminal.backend().buffer();
@@ -105,7 +107,7 @@ mod tests {
     fn slash_command_picker_renders() {
         let backend = TestBackend::new(80, 24);
         let mut terminal = Terminal::new(backend).unwrap();
-        let mut app = App::new(true);
+        let mut app = App::new(true, RunnerBackend::Pty);
         app.startup_phase = crate::app::StartupPhase::Done;
         app.input_buffer = "/ag".to_string();
         app.input_cursor = 3;
@@ -123,7 +125,7 @@ mod tests {
     fn slash_command_picker_nested_renders() {
         let backend = TestBackend::new(80, 24);
         let mut terminal = Terminal::new(backend).unwrap();
-        let mut app = App::new(true);
+        let mut app = App::new(true, RunnerBackend::Pty);
         app.startup_phase = crate::app::StartupPhase::Done;
         app.input_buffer = "/agent s".to_string();
         app.input_cursor = 8;
@@ -144,7 +146,7 @@ mod tests {
     fn slash_command_preview_renders() {
         let backend = TestBackend::new(80, 24);
         let mut terminal = Terminal::new(backend).unwrap();
-        let mut app = App::new(true);
+        let mut app = App::new(true, RunnerBackend::Pty);
         app.startup_phase = crate::app::StartupPhase::Done;
         app.input_buffer = "/agent".to_string();
         app.input_cursor = 6;
@@ -165,7 +167,7 @@ mod tests {
     fn mention_picker_renders() {
         let backend = TestBackend::new(80, 24);
         let mut terminal = Terminal::new(backend).unwrap();
-        let mut app = App::new(true);
+        let mut app = App::new(true, RunnerBackend::Pty);
         app.startup_phase = crate::app::StartupPhase::Done;
         app.input_buffer = "@ki".to_string();
         app.input_cursor = 3;
@@ -183,7 +185,7 @@ mod tests {
     fn models_panel_renders() {
         let backend = TestBackend::new(80, 24);
         let mut terminal = Terminal::new(backend).unwrap();
-        let mut app = App::new(true);
+        let mut app = App::new(true, RunnerBackend::Pty);
         // Scroll to the top so the first handle is visible in the test viewport.
         app.models_scroll = 1000;
         terminal

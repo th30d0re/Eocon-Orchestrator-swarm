@@ -1,7 +1,7 @@
 use std::sync::mpsc::Receiver;
 use std::time::Instant;
 
-use crate::agents::runner::RunHandle;
+use crate::agents::runner::{AgentRunner, RunHandle};
 use crate::agents::swift::SwiftBuildOutput;
 use crate::chat::{ChatEvent, ChatRequest};
 use crate::policy::policy::RiskLabel;
@@ -157,7 +157,7 @@ impl AgentInstance {
         self.last_updated = Instant::now();
     }
 
-    pub fn pause(&mut self) {
+    pub fn pause(&mut self, runner: &dyn AgentRunner) {
         self.set_state(AgentLifecycleState::Paused);
         match &mut self.output {
             AgentOutput::Chat(chat) => {
@@ -165,7 +165,7 @@ impl AgentInstance {
             }
             AgentOutput::Pty(pty) => {
                 if let Some(mut handle) = pty.run_handle.take() {
-                    let _ = handle.child.kill();
+                    let _ = runner.kill(&mut handle);
                 }
             }
             AgentOutput::SwiftResult(_) => {}

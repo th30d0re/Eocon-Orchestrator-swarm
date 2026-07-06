@@ -6,6 +6,8 @@ use color_eyre::Result;
 pub use portable_pty::PtySize;
 use portable_pty::{Child, CommandBuilder, MasterPty, NativePtySystem, PtySystem};
 
+use crate::policy::policy::RiskLabel;
+
 #[derive(Debug)]
 pub enum RunnerMsg {
     Bytes(Vec<u8>),
@@ -18,6 +20,7 @@ pub struct AgentCmd {
     pub args: Vec<String>,
     pub env: Vec<(String, String)>,
     pub cwd: Option<String>,
+    pub risk_tier: RiskLabel,
 }
 
 pub struct RunHandle {
@@ -25,6 +28,9 @@ pub struct RunHandle {
     pub master: Box<dyn MasterPty + Send>,
     pub writer: Box<dyn Write + Send>,
     pub rx: Receiver<RunnerMsg>,
+    pub machine_name: Option<String>,
+    pub dedicated: bool,
+    pub container_pid: Option<u32>,
 }
 
 impl std::fmt::Debug for RunHandle {
@@ -116,6 +122,9 @@ impl AgentRunner for PtyRunner {
             master: pair.master,
             writer,
             rx,
+            machine_name: None,
+            dedicated: false,
+            container_pid: None,
         })
     }
 
