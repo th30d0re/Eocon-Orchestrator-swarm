@@ -1077,7 +1077,7 @@ impl App {
         let paths = crate::chat::localmodel_lm_paths();
         let exe = paths
             .iter()
-            .find(|p| std::path::Path::new(p).is_file())?;
+            .find(|p| p.is_file())?;
         let output = std::process::Command::new(exe)
             .arg("info")
             .arg(backend)

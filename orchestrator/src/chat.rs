@@ -1,6 +1,10 @@
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+
+fn home_path(rel: &str) -> PathBuf {
+    dirs::home_dir().map(|h| h.join(rel)).unwrap_or_else(|| PathBuf::from(rel))
+}
 use std::sync::mpsc::{channel, Receiver, Sender};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -408,7 +412,7 @@ fn build_cli_config(req: &ChatRequest) -> Option<CliConfig> {
     let model = req.model.as_str();
     match provider {
         "anthropic" => {
-            let exe = find_exe("claude", &["/opt/homebrew/bin/claude"])?;
+            let exe = find_exe("claude", &[PathBuf::from("/opt/homebrew/bin/claude")])?;
             let mut args = vec!["-p".into(), "--model".into(), model.into()];
             if let Some(ref system) = req.system_prompt {
                 args.push("--system-prompt".into());
@@ -425,8 +429,8 @@ fn build_cli_config(req: &ChatRequest) -> Option<CliConfig> {
         }
         "moonshot" => {
             let exe = find_exe("kimi", &[
-                "/Users/emmanuel/.kimi-code/bin/kimi",
-                "/opt/homebrew/bin/kimi",
+                home_path(".kimi-code/bin/kimi"),
+                PathBuf::from("/opt/homebrew/bin/kimi"),
             ])?;
             // Kimi requires models to be declared in config.toml, so we rely on the user's
             // configured default_model rather than passing an arbitrary -m alias.
@@ -443,7 +447,7 @@ fn build_cli_config(req: &ChatRequest) -> Option<CliConfig> {
         "openai" | "codex" => {
             let exe = find_exe(
                 "codex",
-                &["/Users/emmanuel/.bun/bin/codex", "/opt/homebrew/bin/codex"],
+                &[home_path(".bun/bin/codex"), PathBuf::from("/opt/homebrew/bin/codex")],
             )?;
             let output_file =
                 std::env::temp_dir().join(format!("eocon-codex-{}.txt", std::process::id()));
@@ -465,7 +469,7 @@ fn build_cli_config(req: &ChatRequest) -> Option<CliConfig> {
             })
         }
         "cursor" => {
-            let exe = find_exe("cursor", &["/Users/emmanuel/.local/bin/cursor"])?;
+            let exe = find_exe("cursor", &[home_path(".local/bin/cursor")])?;
             Some(CliConfig {
                 program: exe,
                 args: vec!["agent".into()],
@@ -478,7 +482,7 @@ fn build_cli_config(req: &ChatRequest) -> Option<CliConfig> {
         "ollama" => {
             let exe = find_exe(
                 "ollama",
-                &["/usr/local/bin/ollama", "/opt/homebrew/bin/ollama"],
+                &[PathBuf::from("/usr/local/bin/ollama"), PathBuf::from("/opt/homebrew/bin/ollama")],
             )?;
             Some(CliConfig {
                 program: exe,
@@ -490,7 +494,7 @@ fn build_cli_config(req: &ChatRequest) -> Option<CliConfig> {
             })
         }
         "google" => {
-            let exe = find_exe("gemini", &["/opt/homebrew/bin/gemini"])?;
+            let exe = find_exe("gemini", &[PathBuf::from("/opt/homebrew/bin/gemini")])?;
             Some(CliConfig {
                 program: exe,
                 args: vec![],
@@ -502,12 +506,17 @@ fn build_cli_config(req: &ChatRequest) -> Option<CliConfig> {
         }
         "coreai" => {
             let exe = find_exe("localmodel-lm", localmodel_lm_paths().as_slice())?;
+            let model_path = if model.is_empty() || model == "RootLedger-Gemma3-12B-CoreAI.aimodel" {
+                crate::model_registry::default_coreai_model_path()
+            } else {
+                model.to_string()
+            };
             Some(CliConfig {
                 program: exe,
                 args: vec!["coreai".into()],
                 prompt_via_arg: false,
                 output_file: None,
-                env: vec![("EOCON_COREAI_MODEL".into(), model.into())],
+                env: vec![("EOCON_COREAI_MODEL".into(), model_path)],
                 json_input: true,
             })
         }
@@ -526,7 +535,7 @@ fn build_cli_config(req: &ChatRequest) -> Option<CliConfig> {
     }
 }
 
-fn find_exe(name: &str, fallbacks: &[&str]) -> Option<String> {
+fn find_exe(name: &str, fallbacks: &[PathBuf]) -> Option<String> {
     if let Ok(output) = Command::new("which").arg(name).output() {
         if output.status.success() {
             let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -536,8 +545,8 @@ fn find_exe(name: &str, fallbacks: &[&str]) -> Option<String> {
         }
     }
     for path in fallbacks {
-        if std::path::Path::new(path).exists() {
-            return Some(path.to_string());
+        if path.exists() {
+            return Some(path.to_string_lossy().to_string());
         }
     }
     None
@@ -566,11 +575,17 @@ fn latest_user_message(messages: &[ChatMessage]) -> String {
         .unwrap_or_else(|| format_messages(messages))
 }
 
-pub fn localmodel_lm_paths() -> Vec<&'static str> {
+pub fn localmodel_lm_paths() -> Vec<PathBuf> {
+    let root = std::env::var_os("EOCON_SWARM_ROOT")
+        .map(PathBuf::from)
+        .or_else(|| {
+            dirs::home_dir().map(|h| h.join("Dev/Tools/Eocon-Orchestrator-swarm"))
+        })
+        .unwrap_or_else(|| PathBuf::from("."));
     vec![
-        "/Users/emmanuel/Dev/Tools/Eocon-Orchestrator-swarm/localmodel-lm/.build/xcode-coreai/Build/Products/Debug/localmodel-lm",
-        "/Users/emmanuel/Dev/Tools/Eocon-Orchestrator-swarm/localmodel-lm/.build/xcode/Build/Products/Debug/localmodel-lm",
-        "/Users/emmanuel/Dev/Tools/Eocon-Orchestrator-swarm/localmodel-lm/.build/debug/localmodel-lm",
+        root.join("localmodel-lm/.build/xcode-coreai/Build/Products/Debug/localmodel-lm"),
+        root.join("localmodel-lm/.build/xcode/Build/Products/Debug/localmodel-lm"),
+        root.join("localmodel-lm/.build/debug/localmodel-lm"),
     ]
 }
 
@@ -637,7 +652,12 @@ fn pick_trace_session(sessions: &[TraceSession], prompt: &str) -> usize {
 }
 
 fn stream_traces_replay(req: &ChatRequest, tx: &Sender<ChatEvent>) {
-    let sessions = match load_trace_sessions(&req.model) {
+    let path = if req.model.is_empty() || req.model == "sessions.jsonl" {
+        crate::model_registry::default_traces_sessions_path()
+    } else {
+        req.model.clone()
+    };
+    let sessions = match load_trace_sessions(&path) {
         Ok(s) => s,
         Err(e) => {
             let _ = tx.send(ChatEvent::Error(e));

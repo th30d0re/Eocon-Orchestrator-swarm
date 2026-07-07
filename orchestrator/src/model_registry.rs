@@ -124,7 +124,7 @@ pub const MODEL_HANDLES: &[ModelHandle] = &[
             name: "rootledger-gemma3-12b",
             display_name: "RootLedger Gemma3 12B",
             provider: "coreai",
-            model: "/Users/emmanuel/Dev/Tools/Eocon-Orchestrator-swarm/RootLedger-Gemma3-12B-CoreAI/RootLedger-Gemma3-12B-CoreAI.aimodel",
+            model: "RootLedger-Gemma3-12B-CoreAI.aimodel",
             role: AgentRole::Generalist,
         }],
     },
@@ -136,7 +136,7 @@ pub const MODEL_HANDLES: &[ModelHandle] = &[
             name: "fable5-sessions",
             display_name: "Fable 5 Claude Code session replays",
             provider: "traces",
-            model: "/Users/emmanuel/.eocon/traces/sessions.jsonl",
+            model: "sessions.jsonl",
             role: AgentRole::Generalist,
         }],
     },
@@ -255,6 +255,34 @@ pub fn parse_mentions(input: &str) -> Vec<Mention> {
     }
 
     mentions
+}
+
+/// Default Core AI model bundle path.
+///
+/// Override at runtime with `EOCON_COREAI_MODEL`; otherwise resolves under the
+/// user's home directory (`~/Dev/Tools/Eocon-Orchestrator-swarm/...`).
+pub fn default_coreai_model_path() -> String {
+    std::env::var("EOCON_COREAI_MODEL").unwrap_or_else(|_| {
+        dirs::home_dir()
+            .map(|h| {
+                h.join("Dev/Tools/Eocon-Orchestrator-swarm/RootLedger-Gemma3-12B-CoreAI/RootLedger-Gemma3-12B-CoreAI.aimodel")
+            })
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default()
+    })
+}
+
+/// Default trace-replay sessions JSONL path.
+///
+/// Override at runtime with `EOCON_TRACES_SESSIONS`; otherwise resolves to
+/// `~/.eocon/traces/sessions.jsonl`.
+pub fn default_traces_sessions_path() -> String {
+    std::env::var("EOCON_TRACES_SESSIONS").unwrap_or_else(|_| {
+        dirs::home_dir()
+            .map(|h| h.join(".eocon/traces/sessions.jsonl"))
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default()
+    })
 }
 
 #[cfg(test)]

@@ -20,7 +20,7 @@ Full design spec: `plans/eocon_swarm_private_memory_e9b065ff.plan.mdx` (in this 
 
 ## 2. Repo + branches (this is a STANDALONE git repo)
 
-Repo root: `/Users/emmanuel/Dev/Tools/Eocon-Orchestrator-swarm` (its own `.git`).
+Repo root: resolve via `EOCON_SWARM_ROOT` or the directory containing this file (its own `.git`).
 History note: the user's home dir was accidentally a git repo; it was removed. Do **not**
 re-init git anywhere above this directory.
 
@@ -179,8 +179,8 @@ fine, so it is the stale downloader adapter, not the migration.
   v2 sandbox (`src/agents/sandbox.rs`) targets this; VM-per-risk-tier topology. **No GPU/ANE
   in the Linux guest** → the inference sidecar stays host-side.
 - MLX 2.x verified end-to-end on `main` with `mlx-community/Qwen2.5-0.5B-Instruct-4bit`.
-- Reference working MLX app (2.x patterns): `/Users/emmanuel/Dev/Apps/ChAi/ChAi_3`
-  (`Managers/MLXModelManager.swift`).
+- Reference working MLX app (2.x patterns): `$HOME/Dev/Apps/ChAi/ChAi_3`
+  (`Managers/MLXModelManager.swift`) — path shown as an example.
 - Session logs (rounds 1–10): `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Root/AI Session Logs/`.
 
 ## 9. Prioritized next steps
@@ -222,7 +222,7 @@ Completed items from §9:
       pass an absolute/relative directory as `modelId` to bypass the broken `swift-hf-api`
       downloader and validate `ChatSession` + `KVCache` + wired memory with local weights.
 - [x] **MLX 3.x local-dir load validated** with real fused models from
-      `/Users/emmanuel/Documents/Theory/Redefining_racism/training/fused_models/`:
+      `$HOME/Documents/Theory/Redefining_racism/training/fused_models/` (path shown as an example):
   - `RootLedger-8B-Abliterated-Fused` (4-bit Llama 3.1 8B) — loaded + generated.
   - `RootLedger-Gemma3-12B-v3-Fused` (4-bit Gemma3 12B) — loaded + generated.
   - `RootLedger-Gemma3-12B-NPBP-Abliterated-v3-v4-Rank32-Iter1000-Fused` — loaded + generated.
@@ -287,13 +287,13 @@ chat-tuned models will appear to produce garbage.
 A live bundle has been exported:
 
 ```
-/Users/emmanuel/Dev/Tools/Eocon-Orchestrator-swarm/RootLedger-Gemma3-12B-CoreAI/
+$EOCON_SWARM_ROOT/RootLedger-Gemma3-12B-CoreAI/
 ```
 
 Pass this path to the sidecar:
 
 ```bash
-EOCON_COREAI_MODEL=/Users/emmanuel/Dev/Tools/Eocon-Orchestrator-swarm/RootLedger-Gemma3-12B-CoreAI/RootLedger-Gemma3-12B-CoreAI.aimodel \
+EOCON_COREAI_MODEL="${EOCON_SWARM_ROOT:-$HOME/Dev/Tools/Eocon-Orchestrator-swarm}/RootLedger-Gemma3-12B-CoreAI/RootLedger-Gemma3-12B-CoreAI.aimodel" \
   localmodel-lm/.build/xcode-coreai/Build/Products/Debug/localmodel-lm coreai
 ```
 

@@ -5,6 +5,7 @@ pub mod chat;
 pub mod config;
 pub mod control;
 pub mod event;
+pub mod llm;
 pub mod mock;
 pub mod model_registry;
 pub mod observability;

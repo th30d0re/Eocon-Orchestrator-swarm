@@ -8,12 +8,12 @@
 
 This report verifies the new Eocon-Orchestrator-swarm packaging artifacts against:
 
-1. The tulu reference implementation:
-   - `/Users/emmanuel/Dev/tulu/external/URL-to-Text/Python_MVP/deploy/Containerfile.video-mcp`
-   - `/Users/emmanuel/Dev/tulu/external/URL-to-Text/Python_MVP/deploy/run-apple-container-video-mcp.sh`
-   - `/Users/emmanuel/Dev/tulu/external/URL-to-Text/Python_MVP/docs/VIDEO_APPLE_CONTAINER_MIGRATION.md`
+1. The tulu reference implementation (paths shown as examples; substitute `$HOME` on your machine):
+   - `$HOME/Dev/tulu/external/URL-to-Text/Python_MVP/deploy/Containerfile.video-mcp`
+   - `$HOME/Dev/tulu/external/URL-to-Text/Python_MVP/deploy/run-apple-container-video-mcp.sh`
+   - `$HOME/Dev/tulu/external/URL-to-Text/Python_MVP/docs/VIDEO_APPLE_CONTAINER_MIGRATION.md`
 2. The Eocon-Orchestrator-swarm plan:
-   - `/Users/emmanuel/.kimi-code/sessions/wd_tools_085f72d1d288/session_7f140868-7223-45b6-873f-8f55e1c0abf8/agents/main/plans/quasar-green-arrow-cloak.md`
+   - `$HOME/.kimi-code/sessions/wd_tools_085f72d1d288/session_7f140868-7223-45b6-873f-8f55e1c0abf8/agents/main/plans/quasar-green-arrow-cloak.md`
 3. Existing defaults in `orchestrator/src/agents/sandbox.rs`.
 
 ## 2. Containerfile.agent-runner

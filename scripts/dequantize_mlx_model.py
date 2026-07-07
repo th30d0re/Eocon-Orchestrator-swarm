@@ -4,8 +4,12 @@
 Usage:
     source .venv-coreai/bin/activate
     python3 scripts/dequantize_mlx_model.py \
-        --model /Users/emmanuel/Documents/Theory/Redefining_racism/training/fused_models/RootLedger-Gemma3-12B-NPBP-Abliterated-v3-Fused \
-        --save-path /Users/emmanuel/Documents/Theory/Redefining_racism/training/fused_models/RootLedger-Gemma3-12B-NPBP-Abliterated-v3-Fused-Dequantized
+        --model "$HOME/Documents/Theory/Redefining_racism/training/fused_models/RootLedger-Gemma3-12B-NPBP-Abliterated-v3-Fused" \
+        --save-path "$HOME/Documents/Theory/Redefining_racism/training/fused_models/RootLedger-Gemma3-12B-NPBP-Abliterated-v3-Fused-Dequantized"
+
+Override the model/output paths with environment variables:
+    EOCON_MLX_MODEL_DIR
+    EOCON_MLX_OUTPUT_DIR
 """
 from __future__ import annotations
 

@@ -19,6 +19,7 @@ Usage:
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -32,7 +33,10 @@ TRACE_SOURCES = {
     "armand0e/claude-fable-5-claude-code",
 }
 
-DEFAULT_PARQUET = "/Users/emmanuel/Dev/Tools/Complete-FABLE.5-traces-2M/data/train.parquet"
+DEFAULT_PARQUET = os.environ.get(
+    "EOCON_TRACES_PARQUET",
+    str(Path.home() / "Dev/Tools/Complete-FABLE.5-traces-2M/data/train.parquet"),
+)
 DEFAULT_OUT = str(Path.home() / ".eocon" / "traces" / "sessions.jsonl")
 
 

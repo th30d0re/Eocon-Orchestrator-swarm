@@ -151,7 +151,7 @@ Downloaded artifacts live in `Eocon-Orchestrator-swarm/research_artifacts/`:
 | `mlx-swift-examples` | [llm-tool](https://github.com/ml-explore/mlx-swift-examples/blob/main/Tools/llm-tool/README.md) | CLI harness for model smoke tests; same pattern as sidecar dev loop. |
 | Apple ML Research | [MLX + M5 Neural Accelerators](https://machinelearning.apple.com/research/exploring-llms-mlx-m5) | M5 TensorOps/Metal 4 path; macOS 26.2+ for Neural Accelerator perf; relevant for future hardware tiers. |
 | MLX Python | [mlx.readthedocs](https://ml-explore.github.io/mlx/build/html/index.html) | Conceptual parity with Swift; QLoRA training recipes in mlx-examples before Swift port. |
-| **ChAi (local app)** | `/Users/emmanuel/Dev/Apps/ChAi/ChAi_3` — `Managers/MLXModelManager.swift` | **Working** MLX Swift + HF download/load/generate reference, pinned to the **2.x** API (`mlx-swift 0.29.1` / `mlx-swift-lm 2.29.3` / `swift-transformers 1.1.9`). Proves runtime device-capability budgeting and the Simulator guard; port its skeleton to 3.x via `upgrade.md`. See *Working reference implementation: ChAi*. |
+| **ChAi (local app)** | `$HOME/Dev/Apps/ChAi/ChAi_3` — `Managers/MLXModelManager.swift` | **Working** MLX Swift + HF download/load/generate reference, pinned to the **2.x** API (`mlx-swift 0.29.1` / `mlx-swift-lm 2.29.3` / `swift-transformers 1.1.9`). Proves runtime device-capability budgeting and the Simulator guard; port its skeleton to 3.x via `upgrade.md`. See *Working reference implementation: ChAi*. |
 
 ### Baseline code references
 
@@ -243,7 +243,7 @@ mlx-swift-lm **3.x** requires explicit `Downloader` + `TokenizerLoader` protocol
 
 ### Working reference implementation: ChAi (local, proven)
 
-`/Users/emmanuel/Dev/Apps/ChAi/ChAi_3` is a **shipping MLX Swift app** that downloads models from Hugging Face and runs on-device inference. It is the canonical local reference for the sidecar's model path. `Managers/MLXModelManager.swift` is the file to read first.
+`$HOME/Dev/Apps/ChAi/ChAi_3` is a **shipping MLX Swift app** that downloads models from Hugging Face and runs on-device inference. It is the canonical local reference for the sidecar's model path. `Managers/MLXModelManager.swift` is the file to read first.
 
 **Pinned versions (from `Package.resolved`) — note this is the 2.x line:**
 

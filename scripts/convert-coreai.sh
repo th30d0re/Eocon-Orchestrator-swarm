@@ -10,8 +10,10 @@
 set -uo pipefail
 
 # --- Config (override via env) ---------------------------------------------------------
-SRC="${SRC:-/Users/emmanuel/Documents/Theory/Redefining_racism/training/fused_models/RootLedger-Gemma3-12B-NPBP-Abliterated-v3-Fused-Dequantized}"
-OUT_DIR="${OUT_DIR:-/Users/emmanuel/Dev/Tools/Eocon-Orchestrator-swarm}"
+DEFAULT_SRC="${HOME}/Documents/Theory/Redefining_racism/training/fused_models/RootLedger-Gemma3-12B-NPBP-Abliterated-v3-Fused-Dequantized"
+DEFAULT_OUT="${EOCON_SWARM_ROOT:-${HOME}/Dev/Tools/Eocon-Orchestrator-swarm}"
+SRC="${SRC:-$DEFAULT_SRC}"
+OUT_DIR="${OUT_DIR:-$DEFAULT_OUT}"
 OUT_NAME="${OUT_NAME:-RootLedger-Gemma3-12B-CoreAI}"
 MAX_CTX="${MAX_CTX:-2048}"                 # reduced from the 8192 default to shrink the export peak
 PRECISION="${PRECISION:-bfloat16}"
