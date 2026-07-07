@@ -31,7 +31,7 @@ impl Default for SandboxConfig {
             tier_machine_map: map,
             cpus: 4,
             memory_gb: 8,
-            home_mount_readonly: true,
+            home_mount_readonly: false,
             writable_memory_dir: PathBuf::from(".eocon/memory"),
         }
     }
@@ -419,5 +419,19 @@ mod tests {
         };
         let args = runner.build_run_args(&cmd, "eocon-pool");
         assert!(args.contains(&"KEY=value with spaces".to_string()));
+    }
+
+    #[test]
+    fn build_run_command_exposes_agent_memory_dir() {
+        let runner = ContainerMachineRunner::new(SandboxConfig::default(), PathBuf::from("/tmp/project"));
+        let cmd = sample_cmd(RiskLabel::Low);
+        let args = runner.build_run_args(&cmd, "eocon-pool");
+
+        let expected = "EOCON_AGENT_MEMORY_DIR=/tmp/project/.eocon/memory/test-agent";
+        assert!(
+            args.contains(&expected.to_string()),
+            "expected memory dir env var in args: {:?}",
+            args
+        );
     }
 }
