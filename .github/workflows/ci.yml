@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Swarm macOS
+    runs-on: macos-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Homebrew dependencies
+        run: |
+          brew update
+          brew install shellcheck || true
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-action@stable
+        with:
+          components: clippy
+
+      - name: Run cargo test
+        working-directory: orchestrator
+        run: cargo test --verbose
+
+      - name: Run cargo clippy
+        working-directory: orchestrator
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Run shellcheck on shell scripts
+        run: |
+          find orchestrator/deploy scripts localmodel-lm/scripts -type f -name '*.sh' -print0 |
+            xargs -0 shellcheck -S warning -e SC1090,SC1091,SC2154,SC2034 || true
+
+      - name: Swift sidecar protocol test (best-effort)
+        continue-on-error: true
+        run: |
+          if command -v swift >/dev/null 2>&1 && [ -d "localmodel-lm" ]; then
+            cd localmodel-lm && ./scripts/test-protocol.sh
+          else
+            echo "Swift toolchain or localmodel-lm not available; skipping sidecar test"
+          fi
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: swarm-logs-${{ github.run_id }}
+          path: |
+            /tmp/proto_build.log
+            /tmp/proto_coreai_err.txt
+            orchestrator/target/**
+          if-no-files-found: ignore

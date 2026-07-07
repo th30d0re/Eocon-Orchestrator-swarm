@@ -1,5 +1,7 @@
 # Eocon Orchestrator Swarm
 
+[![CI](https://github.com/th30d0re/Eocon-Orchestrator-swarm/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/th30d0re/Eocon-Orchestrator-swarm/actions/workflows/ci.yml)
+
 A Rust terminal-UI multi-agent swarm orchestrator with isolated private memory and verified shared gists. Each specialist agent keeps its own reasoning and tool history; only compact, evidence-backed gists are admitted to the shared board after verification. The orchestrator supports host PTY execution and Apple Container Machine sandboxing, and pairs with an on-device Swift sidecar for local MLX and Core AI inference.
 
 This repository is a standalone project. Do not re-initialize git anywhere above this directory.
