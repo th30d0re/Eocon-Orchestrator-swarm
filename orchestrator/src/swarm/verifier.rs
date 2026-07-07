@@ -16,6 +16,11 @@ pub struct GistDraft {
 }
 
 impl GistDraft {
+    /// One-line views (dashboard, /gist list) render the claim,
+    /// so it stays bounded; the summary is the full body and is
+    /// only shown by unfold/snapshot consumers.
+    const MAX_CLAIM_CHARS: usize = 160;
+
     pub fn extract_from(memory: &AgentMemory) -> Option<Self> {
         let assistant_text: String = memory
             .messages
@@ -24,15 +29,23 @@ impl GistDraft {
             .map(|m| m.content.clone())
             .collect::<Vec<_>>()
             .join("\n");
+        Self::from_text(&assistant_text)
+    }
+
+    pub fn from_text(assistant_text: &str) -> Option<Self> {
         if assistant_text.trim().is_empty() {
             return None;
         }
-        let claim = assistant_text.lines().next().unwrap_or("").to_string();
-        let summary = if assistant_text.len() > 240 {
-            format!("{}...", &assistant_text[..237])
-        } else {
-            assistant_text.clone()
-        };
+        // Markdown reports often open with a horizontal rule or
+        // heading marker; a decoration-only line makes a useless
+        // claim, so take the first line with real content.
+        let claim = assistant_text
+            .lines()
+            .map(str::trim)
+            .find(|l| !l.is_empty() && !l.chars().all(|c| matches!(c, '-' | '*' | '=' | '_' | '#' | '~' | ' ')))
+            .unwrap_or_default();
+        let claim = char_truncate(claim, Self::MAX_CLAIM_CHARS);
+        let summary = assistant_text.to_string();
         let evidence = assistant_text
             .lines()
             .skip(1)
@@ -47,6 +60,16 @@ impl GistDraft {
             source_type: GistSource::ModelClaim,
         })
     }
+}
+
+/// Truncate on a char boundary; a byte slice would panic when
+/// the cut lands inside a multi-byte char (e.g. an emoji).
+fn char_truncate(s: &str, max_chars: usize) -> String {
+    if s.chars().count() <= max_chars {
+        return s.to_string();
+    }
+    let cut: String = s.chars().take(max_chars.saturating_sub(3)).collect();
+    format!("{}...", cut)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -189,5 +212,37 @@ pub fn draft_to_gist(draft: GistDraft, agent_id: String, agent_name: String) -> 
         peer_rank: None,
         status: GistStatus::Draft,
         created_at: Instant::now(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn draft_keeps_full_summary() {
+        let long = format!("Headline\n{}", "x".repeat(5000));
+        let draft = GistDraft::from_text(&long).unwrap();
+        assert_eq!(draft.summary, long);
+    }
+
+    #[test]
+    fn draft_claim_skips_markdown_decoration() {
+        let text = "---\n\n## Build Result: BUILD SUCCEEDED\ndetails";
+        let draft = GistDraft::from_text(text).unwrap();
+        assert_eq!(draft.claim, "## Build Result: BUILD SUCCEEDED");
+    }
+
+    #[test]
+    fn draft_claim_is_bounded_and_char_safe() {
+        let text = "✅".repeat(400);
+        let draft = GistDraft::from_text(&text).unwrap();
+        assert!(draft.claim.chars().count() <= GistDraft::MAX_CLAIM_CHARS);
+        assert!(draft.claim.ends_with("..."));
+    }
+
+    #[test]
+    fn draft_rejects_empty_text() {
+        assert!(GistDraft::from_text("  \n ").is_none());
     }
 }
