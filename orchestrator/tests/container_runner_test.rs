@@ -49,12 +49,12 @@ fn machine_exists(name: &str) -> bool {
 
 fn delete_machine(name: &str) {
     let _ = Command::new("container")
-        .args(["machine", "stop", "--name", name])
+        .args(["machine", "stop", name])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status();
     let _ = Command::new("container")
-        .args(["machine", "delete", "--name", name])
+        .args(["machine", "delete", name])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status();

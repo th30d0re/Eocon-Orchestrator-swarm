@@ -207,10 +207,10 @@ impl ContainerMachineRunner {
 
     fn delete_machine(&self, name: &str) -> Result<(), RunnerError> {
         let _ = Command::new("container")
-            .args(["machine", "stop", "--name", name])
+            .args(["machine", "stop", name])
             .status();
         let status = Command::new("container")
-            .args(["machine", "delete", "--name", name])
+            .args(["machine", "delete", name])
             .status()
             .map_err(|e| RunnerError::Kill(format!("failed to delete machine {}: {}", name, e)))?;
         if !status.success() {
