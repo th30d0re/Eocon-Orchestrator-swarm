@@ -5,8 +5,8 @@
 
 ## Summary
 
-- **Paths changed:** 29
-- **Files changed:** 10
+- **Paths changed:** 31
+- **Files changed:** 11
 - **Paths left untouched:** Build artifacts in `.venv*/`, `orchestrator/target/`, and `localmodel-lm/.build/` (generated/virtual-env outputs).
 
 ## Changes
@@ -30,6 +30,8 @@
 | `NEXT_STEPS.mdx` | `/Users/emmanuel/Dev/Tools/Eocon-Orchestrator-swarm/RootLedger-Gemma3-12B-CoreAI/...` | `${EOCON_SWARM_ROOT:-$HOME/Dev/Tools/Eocon-Orchestrator-swarm}/...` | Shell example; use env var. |
 | `plans/eocon_swarm_private_memory_e9b065ff.plan.mdx` | `/Users/emmanuel/Dev/Apps/ChAi/ChAi_3` | `$HOME/Dev/Apps/ChAi/ChAi_3` | Documentation example. |
 | `plans/port_custom_mcp_to_apple_containerization.plan.mdx` | `/Users/emmanuel/Dev/tulu/...` | `$HOME/Dev/tulu/...` | Documentation example. |
+| `orchestrator/LLM_CLIENT_HANDOFF.md` | `/Users/emmanuel/Dev/Tools/cross-audit-site/artifacts/...` | `$HOME/Dev/Tools/cross-audit-site/artifacts/...` | Documentation reference; use `$HOME`. |
+| `orchestrator/LLM_CLIENT_HANDOFF.md` | `/Users/emmanuel/Dev/Tools/Eocon-Orchestrator-swarm/orchestrator` | `"$EOCON_SWARM_ROOT"/orchestrator` | Shell example; use env var. |
 
 ## New/Updated Environment Variables
 
@@ -47,4 +49,4 @@
 
 ## Paths Not Replaced
 
-Generated/virtual-environment files under `.venv*/`, `orchestrator/target/`, and `localmodel-lm/.build/` contain hardcoded absolute paths. These are build artifacts and are not tracked source; they were left untouched.
+Generated/virtual-environment files under `.venv*/`, `orchestrator/target/`, `localmodel-lm/.build/`, and `orchestrator/python/__pycache__/` contain hardcoded absolute paths. These are build artifacts and are not tracked source; they were left untouched.
