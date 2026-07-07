@@ -413,7 +413,15 @@ fn build_cli_config(req: &ChatRequest) -> Option<CliConfig> {
     match provider {
         "anthropic" => {
             let exe = find_exe("claude", &[PathBuf::from("/opt/homebrew/bin/claude")])?;
-            let mut args = vec!["-p".into(), "--model".into(), model.into()];
+            // Headless workers cannot answer tool-approval prompts,
+            // so without this flag any tool call (xcodebuild, git,
+            // etc.) stalls until the turn fails.
+            let mut args = vec![
+                "-p".into(),
+                "--model".into(),
+                model.into(),
+                "--dangerously-skip-permissions".into(),
+            ];
             if let Some(ref system) = req.system_prompt {
                 args.push("--system-prompt".into());
                 args.push(system.clone());
