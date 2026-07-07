@@ -470,6 +470,8 @@ fn parse_role(s: &str) -> AgentRole {
         "synthesizer" => AgentRole::Synthesizer,
         "swift-builder" => AgentRole::SwiftBuilder,
         "swift-tester" => AgentRole::SwiftTester,
+        "foundation-builder" => AgentRole::FoundationBuilder,
+        "foundation-tester" => AgentRole::FoundationTester,
         "risk-guard" => AgentRole::RiskGuard,
         "quant" => AgentRole::Quant,
         _ => AgentRole::Generalist,

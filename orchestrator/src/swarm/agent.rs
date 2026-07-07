@@ -31,6 +31,8 @@ pub enum AgentRole {
     Synthesizer,
     SwiftBuilder,
     SwiftTester,
+    FoundationBuilder,
+    FoundationTester,
     RiskGuard,
     Quant,
 }
@@ -46,6 +48,8 @@ impl AgentRole {
             AgentRole::Synthesizer => "synthesizer",
             AgentRole::SwiftBuilder => "swift-builder",
             AgentRole::SwiftTester => "swift-tester",
+            AgentRole::FoundationBuilder => "foundation-builder",
+            AgentRole::FoundationTester => "foundation-tester",
             AgentRole::RiskGuard => "risk-guard",
             AgentRole::Quant => "quant",
         }
@@ -58,7 +62,10 @@ impl AgentRole {
             | AgentRole::Researcher
             | AgentRole::Synthesizer => RiskLabel::Low,
             AgentRole::Coder | AgentRole::Reviewer => RiskLabel::Medium,
-            AgentRole::SwiftBuilder | AgentRole::SwiftTester => RiskLabel::Medium,
+            AgentRole::SwiftBuilder
+            | AgentRole::SwiftTester
+            | AgentRole::FoundationBuilder
+            | AgentRole::FoundationTester => RiskLabel::Medium,
             AgentRole::RiskGuard => RiskLabel::High,
             AgentRole::Quant => RiskLabel::Medium,
         }

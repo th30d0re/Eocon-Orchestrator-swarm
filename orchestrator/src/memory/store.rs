@@ -386,6 +386,8 @@ When you have a concrete finding, output it as a gist with claim, summary, and e
         AgentRole::Synthesizer => format!("{}\n\nRole: synthesizer. Aggregate verified gists into a final coherent plan or report.", base),
         AgentRole::SwiftBuilder => format!("{}\n\nRole: Swift build specialist. Invoke the BuildAgent command to compile Swift projects and report build outcomes as gists.", base),
         AgentRole::SwiftTester => format!("{}\n\nRole: Swift test specialist. Invoke the TestAgent command to run Swift tests and report test outcomes as gists.", base),
+        AgentRole::FoundationBuilder => format!("{}\n\nRole: Foundation Phase 5 build specialist. Invoke the Foundation BuildAgent script (via the FoundationBuilder skill) to generate, build, and repair Apple-platform code. Report build outcomes as gists.", base),
+        AgentRole::FoundationTester => format!("{}\n\nRole: Foundation Phase 5 test specialist. Invoke the Foundation TestAgent script (via the FoundationTester skill) to generate and run unit, accessibility, flow, UI, Maestro, and Argent verification tests. Report test outcomes as gists.", base),
         AgentRole::RiskGuard => format!("{}\n\nRole: risk guard. Classify proposed actions against the safety policy and stop unsafe actions.", base),
         AgentRole::Quant => format!("{}\n\nRole: quantitative analyst. Perform numerical reasoning and model evaluation.", base),
         AgentRole::Generalist => base.to_string(),

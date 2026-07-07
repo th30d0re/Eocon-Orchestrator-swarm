@@ -1,6 +1,13 @@
 use std::path::PathBuf;
 
 use crate::agents::runner::{AgentCmd, PtySize};
+use crate::agents_skills::foundation::build_agent_skill::{
+    BuildAgentSkill, FoundationSkillError as BuildSkillError,
+};
+use crate::agents_skills::foundation::config::FoundationConfig;
+use crate::agents_skills::foundation::test_agent_skill::{
+    FoundationSkillError as TestSkillError, TestAgentSkill,
+};
 use crate::policy::policy::RiskLabel;
 use crate::swarm::agent::{AgentInstance, AgentLifecycleState, AgentOutput};
 use crate::swarm::engine::SwarmEngine;
@@ -201,6 +208,36 @@ pub fn test_agent_cmd(
         risk_tier: RiskLabel::Medium,
         agent_id: None,
     }
+}
+
+/// Build a Foundation BuildAgent command that resolves the actual Phase 5 script
+/// via `EOCON_FOUNDATION_ROOT`.
+pub fn foundation_build_agent_cmd(
+    task: &str,
+    project: Option<&str>,
+    scheme: Option<&str>,
+    artifacts_dir: Option<&PathBuf>,
+    provider: Option<&str>,
+    model: Option<&str>,
+) -> Result<AgentCmd, BuildSkillError> {
+    let skill = BuildAgentSkill::new(FoundationConfig::load());
+    let base = build_agent_cmd(task, project, scheme, artifacts_dir, provider, model);
+    skill.translate_cmd(&base)
+}
+
+/// Build a Foundation TestAgent command that resolves the actual Phase 5 script
+/// via `EOCON_FOUNDATION_ROOT`.
+pub fn foundation_test_agent_cmd(
+    task: &str,
+    project: Option<&str>,
+    scheme: Option<&str>,
+    artifacts_dir: Option<&PathBuf>,
+    provider: Option<&str>,
+    model: Option<&str>,
+) -> Result<AgentCmd, TestSkillError> {
+    let skill = TestAgentSkill::new(FoundationConfig::load());
+    let base = test_agent_cmd(task, project, scheme, artifacts_dir, provider, model);
+    skill.translate_cmd(&base)
 }
 
 /// Spawn a Swift build/test agent through the swarm engine.

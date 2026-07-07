@@ -1,5 +1,7 @@
 pub mod action;
 pub mod agents;
+#[path = "../agents_skills/mod.rs"]
+pub mod agents_skills;
 pub mod app;
 pub mod chat;
 pub mod config;
@@ -199,7 +201,8 @@ Examples:
   eos agent edit worker \"focus on the parser module\"
   eos agent unfold worker            # show the agent's private memory
 Roles: generalist, planner, coder, reviewer, researcher, synthesizer,
-       swift-builder, swift-tester, risk-guard, quant")]
+       swift-builder, swift-tester, foundation-builder, foundation-tester,
+       risk-guard, quant")]
     Agent(SugarArgs),
     /// /gist commands: list, unfold, reject
     #[command(after_help = "\

@@ -25,12 +25,17 @@ impl RunnerBackend {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub runner_backend: RunnerBackend,
+    /// Path to the Eocon-Foundation-V1 checkout used by the Foundation Phase 5
+    /// agent skills. Falls back to the `EOCON_FOUNDATION_ROOT` environment
+    /// variable, then to `~/Dev/Tools/Eocon-Foundation-V1`.
+    pub eocon_foundation_root: Option<String>,
 }
 
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
             runner_backend: RunnerBackend::Pty,
+            eocon_foundation_root: None,
         }
     }
 }

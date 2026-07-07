@@ -696,8 +696,13 @@ impl App {
             if let Some(agent) = self.swarm_engine.get_agent_mut(&id) {
                 match &mut agent.output {
                     AgentOutput::Pty(pty) => {
-                        let is_swift =
-                            matches!(agent.role, AgentRole::SwiftBuilder | AgentRole::SwiftTester);
+                        let is_build_or_test_agent = matches!(
+                            agent.role,
+                            AgentRole::SwiftBuilder
+                                | AgentRole::SwiftTester
+                                | AgentRole::FoundationBuilder
+                                | AgentRole::FoundationTester
+                        );
                         if let Some(handle) = pty.run_handle.as_mut() {
                             // drain
                             loop {
@@ -715,7 +720,7 @@ impl App {
                                 }
                             }
                         }
-                        if is_swift {
+                        if is_build_or_test_agent {
                             let screen_text: String = pty
                                 .screen
                                 .as_text()
