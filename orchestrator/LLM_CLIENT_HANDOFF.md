@@ -8,7 +8,7 @@ Cross-repo integration (Phase 2) is NOT in scope for this handoff.
 ## What Was Delivered
 
 ### 1. Design Document
-- **Path:** `/Users/emmanuel/Dev/Tools/cross-audit-site/artifacts/UNIFIED_LLM_CLIENT_DESIGN.md`
+- **Path:** `$HOME/Dev/Tools/cross-audit-site/artifacts/UNIFIED_LLM_CLIENT_DESIGN.md`
 - Covers core request/response/streaming/tool-call abstraction, supported providers, language bindings, TOML/JSON config, error handling, and migration path from existing provider layers.
 
 ### 2. Rust Core (`Eocon-Orchestrator-swarm/orchestrator/src/llm/`)
@@ -45,7 +45,7 @@ Eocon-Orchestrator-swarm/orchestrator/LLM_CLIENT_HANDOFF.md
 ## Verification
 
 ```bash
-cd /Users/emmanuel/Dev/Tools/Eocon-Orchestrator-swarm/orchestrator
+cd "$EOCON_SWARM_ROOT"/orchestrator
 cargo check
 # => clean (1 dead_code warning in pre-existing memory/store.rs)
 
