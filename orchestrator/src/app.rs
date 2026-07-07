@@ -8,6 +8,7 @@ use crate::agents::runner::PtyRunner;
 use crate::agents::sandbox::{ContainerMachineRunner, SandboxConfig};
 use crate::agents::swift;
 use crate::config::RunnerBackend;
+use crate::memory::store::MemoryStore;
 use crate::model_registry::{filter_by_prefix, active_variant, Mention, MODEL_HANDLES};
 use crate::policy::config::{load_global_policy, load_user_policy};
 use crate::policy::engine::PolicyEngine;
@@ -244,6 +245,8 @@ impl App {
         let global = load_global_policy(&project_dir);
         let user = load_user_policy();
 
+        let memory_store = Self::open_memory_store(&project_dir);
+
         let runner: Arc<dyn crate::agents::runner::AgentRunner> = match runner_backend {
             RunnerBackend::Pty => Arc::new(PtyRunner),
             RunnerBackend::Container => {
@@ -260,8 +263,8 @@ impl App {
                 }
             }
         };
-        let engine =
-            SwarmEngine::new(project_dir.clone(), runner).with_policy(PolicyEngine::new(global, user));
+        let engine = SwarmEngine::new(project_dir.clone(), runner, memory_store)
+            .with_policy(PolicyEngine::new(global, user));
 
         let mut app = Self {
             swarm_phase: SwarmPhase::Idle,
@@ -318,6 +321,19 @@ impl App {
             .output()
             .map(|o| o.status.success())
             .unwrap_or(false)
+    }
+
+    fn open_memory_store(project_dir: &Path) -> MemoryStore {
+        let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+        let sqlite_path = home.join(".eocon").join("memory.sqlite");
+        let jsonl_root = project_dir.join(".eocon").join("memory");
+        MemoryStore::open(&sqlite_path, &jsonl_root).unwrap_or_else(|e| {
+            panic!(
+                "failed to open memory store at {}: {}",
+                sqlite_path.display(),
+                e
+            )
+        })
     }
 
     pub fn elapsed_secs(&self) -> u64 {

@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use serde_json::json;
 
-use super::client::{FinishReason, Message, Request, Response, Role, StreamEvent, ToolCall, Usage};
+use super::client::{FinishReason, Request, Response, Role, StreamEvent, ToolCall, Usage};
 use super::config::LlmConfig;
 use super::LlmError;
 
@@ -85,7 +85,9 @@ impl Provider for AnthropicProvider {
             .send_json(body)
             .map_err(LlmError::Http)?;
 
-        let json: serde_json::Value = resp.into_json().map_err(LlmError::Http)?;
+        let json: serde_json::Value = resp.into_json().map_err(|e| {
+            LlmError::UnexpectedResponse(format!("failed to read Anthropic response body: {}", e))
+        })?;
 
         let content = json["content"]
             .as_array()
@@ -227,7 +229,12 @@ impl Provider for OpenAiCompatibleProvider {
             .send_json(body)
             .map_err(LlmError::Http)?;
 
-        let json: serde_json::Value = resp.into_json().map_err(LlmError::Http)?;
+        let json: serde_json::Value = resp.into_json().map_err(|e| {
+            LlmError::UnexpectedResponse(format!(
+                "failed to read {} response body: {}",
+                self.name, e
+            ))
+        })?;
 
         let content = json["choices"]
             .get(0)
@@ -264,7 +271,12 @@ impl Provider for OpenAiCompatibleProvider {
             content: clean_content,
             tool_calls,
             usage: parse_usage(&json, "usage"),
-            finish_reason: parse_finish_reason(&json["choices"].get(0).and_then(|c| c["finish_reason"].clone())),
+            finish_reason: parse_finish_reason(
+                &json["choices"]
+                    .get(0)
+                    .and_then(|c| Some(c["finish_reason"].clone()))
+                    .unwrap_or_default(),
+            ),
         })
     }
 
@@ -497,7 +509,7 @@ fn extract_xml(text: &str, tool_names: &[String]) -> Vec<Extracted> {
         let args = extract_xml_tag(body, "arguments");
 
         if let (Some(name), Some(args)) = (name, args) {
-            if tool_names.iter().any(|n| n == name) && serde_json::from_str::<serde_json::Value>(&args).is_ok() {
+            if tool_names.iter().any(|n| n == &name) && serde_json::from_str::<serde_json::Value>(&args).is_ok() {
                 out.push(Extracted {
                     name,
                     arguments_json: args,

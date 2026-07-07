@@ -6,6 +6,7 @@ pub mod config;
 pub mod control;
 pub mod event;
 pub mod llm;
+pub mod memory;
 pub mod mock;
 pub mod model_registry;
 pub mod observability;
@@ -233,6 +234,22 @@ Examples:
     Trace(SugarArgs),
     /// Shut an instance down (sends /quit)
     Quit(SugarArgs),
+    /// Unified LLM client: send a request and print the response as JSON.
+    ///
+    /// Reads a JSON `Request` from stdin and writes a JSON `Response` to stdout.
+    /// Useful for language bindings and shell wrappers.
+    Llm {
+        #[command(subcommand)]
+        command: LlmCommand,
+    },
+}
+
+#[derive(Debug, Clone, clap::Subcommand)]
+pub enum LlmCommand {
+    /// Send one complete request and print the JSON response.
+    Complete,
+    /// Send one streaming request and print JSON-lines events.
+    Stream,
 }
 
 /// Shared arguments for the slash-command sugar subcommands: everything after
@@ -375,4 +392,41 @@ pub fn run_headless(config: Config) -> Result<()> {
 
 pub fn run_dashboard() -> Result<()> {
     ui::dashboard::run_dashboard()
+}
+
+pub fn run_llm(command: LlmCommand) -> Result<()> {
+    use color_eyre::eyre::eyre;
+    use crate::llm::LlmClient;
+    use std::io::{Read, Write};
+
+    let mut input = String::new();
+    std::io::stdin()
+        .read_to_string(&mut input)
+        .map_err(|e| eyre!("failed to read request from stdin: {}", e))?;
+
+    let request: crate::llm::Request = serde_json::from_str(&input)
+        .map_err(|e| eyre!("invalid JSON request: {}", e))?;
+
+    let config = crate::llm::LlmConfig::load_default();
+    let client = crate::llm::UnifiedLlmClient::new(config);
+
+    match command {
+        LlmCommand::Complete => {
+            let response = client.complete(request).map_err(|e| eyre!("{}", e))?;
+            let json = serde_json::to_string(&response).map_err(|e| eyre!("{}", e))?;
+            println!("{}", json);
+        }
+        LlmCommand::Stream => {
+            let stream = client.stream(request).map_err(|e| eyre!("{}", e))?;
+            let stdout = std::io::stdout();
+            let mut handle = stdout.lock();
+            for event in stream {
+                let event = event.map_err(|e| eyre!("{}", e))?;
+                let json = serde_json::to_string(&event).map_err(|e| eyre!("{}", e))?;
+                writeln!(handle, "{}", json).map_err(|e| eyre!("{}", e))?;
+            }
+        }
+    }
+
+    Ok(())
 }

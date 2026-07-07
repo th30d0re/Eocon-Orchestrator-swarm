@@ -21,6 +21,7 @@ pub struct AgentCmd {
     pub env: Vec<(String, String)>,
     pub cwd: Option<String>,
     pub risk_tier: RiskLabel,
+    pub agent_id: Option<String>,
 }
 
 pub struct RunHandle {

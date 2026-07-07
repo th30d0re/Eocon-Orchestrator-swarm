@@ -4,9 +4,9 @@ use std::time::Instant;
 use crate::agents::runner::{AgentRunner, RunHandle};
 use crate::agents::swift::SwiftBuildOutput;
 use crate::chat::{ChatEvent, ChatRequest};
+use crate::memory::store::{AgentMemory, MemoryStore};
 use crate::policy::policy::RiskLabel;
 use crate::pty_screen::PtyScreen;
-use crate::swarm::memory::AgentMemory;
 use crate::swarm::verifier::GistDraft;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -104,9 +104,16 @@ pub struct PtyOutput {
 }
 
 impl AgentInstance {
-    pub fn new(id: String, name: String, role: AgentRole, provider: String, model: String) -> Self {
+    pub fn new(
+        id: String,
+        name: String,
+        role: AgentRole,
+        provider: String,
+        model: String,
+        store: MemoryStore,
+    ) -> Self {
         let now = Instant::now();
-        let memory = AgentMemory::new(&id, &role);
+        let memory = AgentMemory::new(&id, &role, store);
         Self {
             id,
             name,

@@ -2,7 +2,7 @@ use clap::Parser;
 
 use eocon_swarm::control::cli;
 use eocon_swarm::tui::install_panic_hook;
-use eocon_swarm::{run, run_dashboard, run_headless, CliArgs, Config, EosCommand, SugarArgs};
+use eocon_swarm::{run, run_dashboard, run_headless, run_llm, CliArgs, Config, EosCommand, SugarArgs};
 
 fn main() -> std::process::ExitCode {
     if let Err(e) = color_eyre::install() {
@@ -60,6 +60,7 @@ fn main() -> std::process::ExitCode {
         Some(EosCommand::Trace(a)) => sugar("trace", "/trace", a),
         Some(EosCommand::Status(a)) => sugar("status", "/swarm status", a),
         Some(EosCommand::Quit(a)) => sugar("quit", "/quit", a),
+        Some(EosCommand::Llm { command }) => report(run_llm(command)),
     }
 }
 

@@ -153,6 +153,7 @@ pub fn build_agent_cmd(
         env: Vec::new(),
         cwd: None,
         risk_tier: RiskLabel::Medium,
+        agent_id: None,
     }
 }
 
@@ -198,6 +199,7 @@ pub fn test_agent_cmd(
         env: Vec::new(),
         cwd: None,
         risk_tier: RiskLabel::Medium,
+        agent_id: None,
     }
 }
 

@@ -87,17 +87,19 @@ mod tests {
     use ratatui::backend::TestBackend;
     use ratatui::Terminal;
 
+    use crate::memory::store::MemoryStore;
     use crate::swarm::agent::{AgentInstance, AgentLifecycleState, AgentRole};
 
     use super::*;
 
-    fn sample_agent() -> AgentInstance {
+    fn sample_agent(store: MemoryStore) -> AgentInstance {
         let mut agent = AgentInstance::new(
             "a1".to_string(),
             "alpha".to_string(),
             AgentRole::Coder,
             "anthropic".to_string(),
             "claude".to_string(),
+            store,
         );
         agent.set_state(AgentLifecycleState::Acting);
         agent.current_task = Some("fix login flow".to_string());
@@ -106,7 +108,8 @@ mod tests {
 
     #[test]
     fn renders_unselected_agent_card() {
-        let agent = sample_agent();
+        let (store, _dir) = MemoryStore::temp();
+        let agent = sample_agent(store);
         let backend = TestBackend::new(40, 8);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal
@@ -126,7 +129,8 @@ mod tests {
 
     #[test]
     fn renders_selected_agent_card() {
-        let agent = sample_agent();
+        let (store, _dir) = MemoryStore::temp();
+        let agent = sample_agent(store);
         let backend = TestBackend::new(40, 8);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal

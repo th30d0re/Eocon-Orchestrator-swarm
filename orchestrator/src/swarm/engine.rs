@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use crate::agents::runner::{AgentCmd, AgentRunner, PtySize};
 use crate::chat::spawn_chat_request;
+use crate::memory::store::MemoryStore;
 use crate::observability::metrics::SwarmMetrics;
 use crate::policy::engine::PolicyEngine;
 use crate::pty_screen::PtyScreen;
@@ -21,10 +22,15 @@ pub struct SwarmEngine {
     pub runner: Arc<dyn AgentRunner>,
     pub project_dir: PathBuf,
     pub metrics: SwarmMetrics,
+    pub memory_store: MemoryStore,
 }
 
 impl SwarmEngine {
-    pub fn new(project_dir: PathBuf, runner: Arc<dyn AgentRunner>) -> Self {
+    pub fn new(
+        project_dir: PathBuf,
+        runner: Arc<dyn AgentRunner>,
+        memory_store: MemoryStore,
+    ) -> Self {
         Self {
             agents: Vec::new(),
             gist_board: GistBoard::new(),
@@ -33,6 +39,7 @@ impl SwarmEngine {
             runner,
             project_dir,
             metrics: SwarmMetrics::default(),
+            memory_store,
         }
     }
 
@@ -49,7 +56,14 @@ impl SwarmEngine {
         model: String,
     ) -> String {
         let id = uuid::Uuid::new_v4().to_string();
-        let agent = AgentInstance::new(id.clone(), name, role, provider, model);
+        let agent = AgentInstance::new(
+            id.clone(),
+            name,
+            role,
+            provider,
+            model,
+            self.memory_store.clone(),
+        );
         self.agents.push(agent);
         id
     }
@@ -180,7 +194,7 @@ impl SwarmEngine {
     pub fn spawn_pty_agent(
         &mut self,
         id: &str,
-        cmd: AgentCmd,
+        mut cmd: AgentCmd,
         size: PtySize,
     ) -> Result<(), String> {
         let agent = self
@@ -188,6 +202,7 @@ impl SwarmEngine {
             .iter_mut()
             .find(|a| a.id == id)
             .ok_or("agent not found")?;
+        cmd.agent_id = Some(id.to_string());
         let handle = self.runner.spawn(cmd, size).map_err(|e| e.to_string())?;
         let mut screen = PtyScreen::new(size.rows as usize, size.cols as usize);
         screen.resize(size.rows as usize, size.cols as usize);

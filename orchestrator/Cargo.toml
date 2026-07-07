@@ -24,6 +24,7 @@ confy = "0.6"
 dirs = "5"
 thiserror = "1"
 ureq = { version = "2.12", features = ["json"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
 
 [dev-dependencies]
 tempfile = "3"

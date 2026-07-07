@@ -120,6 +120,7 @@ fn container_runner_lifecycle() {
         env: vec![],
         cwd: None,
         risk_tier: RiskLabel::Low,
+        agent_id: Some("low-agent".to_string()),
     };
 
     let mut low_handle = runner.spawn(low_cmd, size).expect("spawn Low agent failed");
@@ -152,6 +153,7 @@ fn container_runner_lifecycle() {
         env: vec![],
         cwd: None,
         risk_tier: RiskLabel::Medium,
+        agent_id: Some("medium-agent".to_string()),
     };
 
     let mut medium_handle = runner.spawn(medium_cmd, size).expect("spawn Medium agent failed");
@@ -200,6 +202,7 @@ fn pty_runner_still_works() {
         env: vec![],
         cwd: None,
         risk_tier: RiskLabel::Low,
+        agent_id: Some("pty-agent".to_string()),
     };
 
     let mut handle = runner.spawn(cmd, size).expect("PTY spawn failed");

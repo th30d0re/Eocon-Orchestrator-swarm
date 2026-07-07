@@ -81,6 +81,23 @@ impl ContainerMachineRunner {
             args.push("-e".to_string());
             args.push(format!("{}={}", k, v));
         }
+
+        // Writable agent memory directory.
+        // Apple Container Machines do not expose a per-directory bind-mount
+        // flag in `container machine run`; the only host mount is
+        // `--home-mount` configured at machine creation time. We therefore rely
+        // on a read-write home mount and expose the absolute memory path to the
+        // guest via an environment variable. When Apple adds a native bind-mount
+        // flag, this block can be replaced with `--volume <host>:<guest>`.
+        if let Some(ref agent_id) = cmd.agent_id {
+            let memory_dir = self
+                .project_dir
+                .join(&self.config.writable_memory_dir)
+                .join(agent_id);
+            args.push("-e".to_string());
+            args.push(format!("EOCON_AGENT_MEMORY_DIR={}", memory_dir.display()));
+        }
+
         args.push("--".to_string());
         args.push(cmd.program.clone());
         args.extend(cmd.args.iter().cloned());
@@ -338,6 +355,7 @@ mod tests {
             env: vec![("FOO".to_string(), "bar".to_string())],
             cwd: None,
             risk_tier,
+            agent_id: Some("test-agent".to_string()),
         }
     }
 
@@ -397,6 +415,7 @@ mod tests {
             env: vec![("KEY".to_string(), "value with spaces".to_string())],
             cwd: None,
             risk_tier: RiskLabel::Safe,
+            agent_id: Some("test-agent".to_string()),
         };
         let args = runner.build_run_args(&cmd, "eocon-pool");
         assert!(args.contains(&"KEY=value with spaces".to_string()));
