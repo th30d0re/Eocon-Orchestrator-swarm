@@ -5,7 +5,7 @@
 
 ## Summary
 
-- **Paths changed:** 14
+- **Paths changed:** 29
 - **Files changed:** 10
 - **Paths left untouched:** Build artifacts in `.venv*/`, `orchestrator/target/`, and `localmodel-lm/.build/` (generated/virtual-env outputs).
 
