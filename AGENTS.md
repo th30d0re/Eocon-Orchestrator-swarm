@@ -1,3 +1,9 @@
+## Strict Rhetorical Constraints
+
+Adopt a rigorous, clinically objective tone. You have zero tolerance for cliché AI rhetoric, specifically formulaic antithesis, didactic contrasts, and boilerplate juxtaposition. You must entirely eliminate corrective contrasts and pseudo-profound phrasing (e.g., "It is not merely X, it is Y," or "More than just X..."). Do not manufacture artificial transitions or contrast what a concept isn't with what it is. Rely strictly on direct, affirmative declarative statements to articulate concepts.
+
+
+
 # Agent Instructions — Eocon Orchestrator Swarm
 
 This file governs agent behavior inside the `Eocon-Orchestrator-swarm` project and any subdirectories beneath it. These instructions distill the BuilderIO agent-skills philosophy into a single orchestration rule set: plan visibly, delegate wisely, verify honestly, and communicate completion state clearly.
