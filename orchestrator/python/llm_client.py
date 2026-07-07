@@ -65,7 +65,7 @@ class LlmClient:
 
     def _run(self, command: str, request: dict[str, Any]) -> subprocess.Popen:
         """Spawn the Rust CLI with the given request on stdin."""
-        proc = subprocess.Popen(
+        return subprocess.Popen(
             [self._binary, "llm", command],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
@@ -73,16 +73,12 @@ class LlmClient:
             text=True,
             encoding="utf-8",
         )
-        assert proc.stdin is not None
-        proc.stdin.write(json.dumps(request, ensure_ascii=False))
-        proc.stdin.write("\n")
-        proc.stdin.close()
-        return proc
 
     def complete(self, **kwargs: Any) -> dict[str, Any]:
         """Send a complete request and return the JSON response."""
         proc = self._run("complete", kwargs)
-        stdout, stderr = proc.communicate(timeout=300)
+        payload = json.dumps(kwargs, ensure_ascii=False) + "\n"
+        stdout, stderr = proc.communicate(input=payload, timeout=300)
 
         if proc.returncode != 0:
             raise LlmError(f"eos llm complete failed: {stderr.strip()}")
@@ -95,6 +91,10 @@ class LlmClient:
     def stream(self, **kwargs: Any) -> Iterator[dict[str, Any]]:
         """Send a streaming request and yield JSON-lines events."""
         proc = self._run("stream", kwargs)
+        payload = json.dumps(kwargs, ensure_ascii=False) + "\n"
+        assert proc.stdin is not None
+        proc.stdin.write(payload)
+        proc.stdin.close()
         assert proc.stdout is not None
 
         for line in proc.stdout:
