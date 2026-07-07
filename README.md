@@ -96,7 +96,11 @@ eos snapshot
 ```
 Eocon-Orchestrator-swarm/
 ├── AGENTS.md                  # Agent behavior and planning rules for this repo
-├── Constitution.md            # Governance, safety architecture, and oversight norms
+├── Constitution.md            # Governance, safety architecture, and oversight norms (Markdown source)
+├── Constitution/              # Publication-quality LaTeX constitution and PDF
+│   ├── Constitution.tex       # LaTeX source
+│   ├── Constitution.pdf       # Compiled PDF
+│   └── build.sh               # Build script
 ├── NEXT_STEPS.mdx             # Cold-start handoff and prioritized next steps
 ├── PLAN_FORMAT.md             # Plan-file format specification
 ├── TESTING.md                 # Testing notes
@@ -125,6 +129,7 @@ Eocon-Orchestrator-swarm/
 ## Important docs and plans
 
 - [Constitution.md](Constitution.md) — governance rules, risk tiers, PACT policy, prohibited behaviors, and failure modes.
+- [Constitution/Constitution.pdf](Constitution/Constitution.pdf) — publication-quality LaTeX constitution (30 pages, compiled from `Constitution/Constitution.tex`).
 - [NEXT_STEPS.mdx](NEXT_STEPS.mdx) — current branch state, verified environment facts, and the prioritized backlog.
 - [plans/eocon_swarm_private_memory_e9b065ff.plan.mdx](plans/eocon_swarm_private_memory_e9b065ff.plan.mdx) — full design specification for the private-memory swarm.
 - [docs/CONTAINER_SANDBOX.md](docs/CONTAINER_SANDBOX.md) — how to build, run, and tune the container-machine sandbox.
