@@ -244,7 +244,7 @@ The swarm shall:
 \begin{itemize}
     \item Assist in planning, research, coding, review, testing, and repair tasks.
     \item Maintain clear boundaries between agent-private reasoning and shared, verified context.
-    \item Enforce safety policy at runtime rather than relying solely on prompt-level instruction.
+    \item Enforce safety policy at runtime through the policy engine.
     \item Provide operators with transparent traces, editable plans, and intervention points.
 \end{itemize}
 
@@ -279,7 +279,7 @@ This constitution does not govern:
     \item Every gist on the shared board has passed admission-time verification.
     \item Every host action is intercepted, classified, and either approved or rejected according to policy.
     \item Every execution trace is exportable as structured JSON.
-    \item Operators can pause, edit, restart, or kill any agent.
+    \item Operators can pause, edit, restart, or terminate any agent.
     \item Fallback behaviors activate automatically when a backend, verifier, or agent fails.
 \end{enumerate}
 \end{requirementbox}
@@ -292,7 +292,7 @@ This constitution does not govern:
 
 \subsection{Section 1: Agenthood}
 
-An \textbf{agent} is any model-backed execution context spawned by the orchestrator to perform work. Agenthood begins when the orchestrator initializes the agent's memory, system prompt, and runtime context. Agenthood ends when the agent is killed, its memory is archived, and any dedicated container machine is destroyed.
+An \textbf{agent} is any model-backed execution context spawned by the orchestrator to perform work. Agenthood begins when the orchestrator initializes the agent's memory, system prompt, and runtime context. Agenthood ends when the agent is terminated, its memory is archived, and any dedicated container machine is deleted.
 
 \subsection{Section 2: Required Declarations}
 
@@ -317,7 +317,7 @@ Each role carries a default risk tier derived from the typical authority and des
     \item \textbf{Attestation}: the agent confirms its declarations and accepts the constitution.
     \item \textbf{Execution}: the agent performs work within its risk tier and policy envelope.
     \item \textbf{Verification}: outputs intended for shared memory pass admission-time verification.
-    \item \textbf{Termination}: the agent is killed, its trace is archived, and its resources are released.
+    \item \textbf{Termination}: the agent is terminated, its trace is archived, and its resources are released.
 \end{enumerate}
 
 \subsection{Section 5: Identity and Sybil Resistance}
@@ -366,7 +366,7 @@ Raw KV caches, attention maps, embedding vectors, and other latent representatio
 
 \subsection{Section 5: Memory Retention and Deletion}
 
-Private memory is retained for the lifetime of the agent and may be archived after termination for audit purposes. The operator may delete archived memory at any time. When an agent is killed, its live memory directory is removed and any container-machine scratch space is destroyed.
+Private memory is retained for the lifetime of the agent and may be archived after termination for audit purposes. The operator may delete archived memory at any time. When an agent is terminated, its live memory directory is removed and any container-machine scratch space is deleted.
 
 %===============================================================================
 % ARTICLE IV: SHARED CONTEXT AND THE GIST BOARD
@@ -527,7 +527,7 @@ Risk tiers map to execution isolation:
 \begin{itemize}
     \item Safe and Low tiers share the \texttt{eocon-pool} container machine, if container mode is active.
     \item Medium, High, and Critical tiers receive dedicated container machines.
-    \item Dedicated machines are destroyed immediately after the agent is killed.
+    \item Dedicated machines are deleted immediately after the agent is terminated.
 \end{itemize}
 
 %===============================================================================
@@ -574,7 +574,7 @@ Guide-classified actions require explicit operator confirmation before execution
 
 \subsection{Section 5: Soft-Label Governance}
 
-Where feasible, the policy engine may use continuous probabilistic risk labels rather than purely binary classifications. These soft labels feed into adjustable levers such as transaction taxes, circuit breakers, random audits, and reputation decay, allowing nuanced responses to uncertain risk.
+Where feasible, the policy engine may use continuous probabilistic risk labels. These soft labels feed into adjustable levers such as transaction taxes, circuit breakers, random audits, and reputation decay, allowing nuanced responses to uncertain risk.
 
 %===============================================================================
 % ARTICLE VIII: HOST ACTION SAFETY
@@ -607,7 +607,7 @@ Operators may pause, edit, or restart any agent before its output reaches the sh
 \begin{itemize}
     \item A real-time view of pending host actions.
     \item The ability to approve, reject, or modify a pending action.
-    \item The ability to kill an agent immediately.
+    \item The ability to terminate an agent immediately.
     \item A log of all operator overrides.
 \end{itemize}
 
@@ -641,7 +641,7 @@ On-device inference and GPU workloads remain on the macOS host in the \texttt{lo
 
 \subsection{Section 4: Machine Lifecycle}
 
-Dedicated container machines are stopped and deleted when the agent is killed. No ghost machines are permitted. The orchestrator shall verify machine deletion and alert the operator if a machine cannot be destroyed.
+Dedicated container machines are stopped and deleted when the agent is terminated. No ghost machines are permitted. The orchestrator shall verify machine deletion and alert the operator if a machine cannot be deleted.
 
 \subsection{Section 5: Sandbox Escape Prevention}
 
@@ -670,7 +670,7 @@ The operator may:
 
 \begin{enumerate}
     \item Spawn individual agents with specified roles and risk tiers.
-    \item Pause, resume, edit, restart, and kill individual agents.
+    \item Pause, resume, edit, restart, and terminate individual agents.
     \item Inspect private memory and execution traces, with all such inspections logged.
     \item Override agent proposals, with every override recorded in the audit trace.
     \item Reject or modify gists before they are admitted to the shared board.
@@ -689,7 +689,7 @@ The swarm shall signal for operator attention when:
     \item A proposed action is classified as Guide or Reject.
     \item Verification fails repeatedly for an agent.
     \item An anomaly detector raises an alarm.
-    \item A critical container machine cannot be destroyed.
+    \item A critical container machine cannot be deleted.
     \item The operator has configured a mandatory checkpoint.
 \end{itemize}
 
@@ -925,7 +925,7 @@ If verification fails, the gist is rejected. The authoring agent may revise and 
 
 \subsection{Section 4: Agent Stall}
 
-If an agent stalls, the watchdog flags it for operator intervention. A stall is defined as a configurable period without progress, output, or response to health checks. The operator may restart or kill the stalled agent.
+If an agent stalls, the watchdog flags it for operator intervention. A stall is defined as a configurable period without progress, output, or response to health checks. The operator may restart or terminate the stalled agent.
 
 \subsection{Section 5: Orphaned Resources}
 
@@ -1107,14 +1107,14 @@ This constitution is grounded in the NotebookLM notebook \textit{Aligning Multi-
     \item Monitor the pending-actions queue for Guide-classified items requiring approval.
     \item Review newly admitted gists before downstream agents consume them.
     \item Watch for anomaly alarms and stalled-agent notifications.
-    \item Verify that container machines are destroyed when their agents are killed.
+    \item Verify that container machines are deleted when their agents are terminated.
     \item Confirm that audit traces are being written and exported according to retention policy.
 \end{enumerate}
 
 \subsection{Checklist D.3: Before Shutdown}
 
 \begin{enumerate}
-    \item Kill all active agents or allow them to complete in-flight work.
+    \item Terminate all active agents or allow them to complete in-flight work.
     \item Verify deletion of all dedicated container machines.
     \item Export the final trace archive for the session.
     \item Review any operator overrides and unresolved Guide decisions.
