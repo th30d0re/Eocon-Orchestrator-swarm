@@ -344,27 +344,27 @@ Implementation has not started. This table is scaffolded now and must be complet
 
 | Plan Step | Actual Outcome | Deviation (Yes/No) | Notes |
 |---|---|---|---|
-| 1. Cargo.toml `vt100` | Pending | — | |
-| 2. `term/emulator.rs` | Pending | — | |
-| 3. `term/widget.rs` | Pending | — | |
-| 4. `runner.rs` raw reads + env + resize | Pending | — | |
-| 5. `sandbox.rs` same | Pending | — | |
-| 6. `agent.rs` emulator swap, delete `pty_screen.rs` | Pending | — | |
-| 7. `app.rs` resize propagation | Pending | — | |
-| 8. `workflow_panel.rs` styled grid | Pending | — | |
-| 9. `tests/term_emulator.rs` | Pending | — | |
-| 10. `term/keys.rs` | Pending | — | |
-| 11. `app.rs` InputMode | Pending | — | |
-| 12. `event.rs` passthrough branch | Pending | — | |
-| 13. `layout.rs` Terminals grid | Pending | — | |
-| 14. `ui/terminal_pane.rs` | Pending | — | |
-| 15. `agents/vendor.rs` | Pending | — | |
-| 16. commands/engine spawn `--tui` + worktrees | Pending | — | |
-| 17. status bar + picker entries | Pending | — | |
-| 18. keys + passthrough tests | Pending | — | |
-| 19. `agent_events.rs` | Pending | — | |
-| 20. `transcript_tail.rs` | Pending | — | |
-| 21. control protocol AgentEvent | Pending | — | |
-| 22. `hooks.rs` + `eos hooks install` / `eos event` | Pending | — | |
-| 23. engine gist-from-event + lifecycle | Pending | — | |
-| 24. `tests/transcript_tail.rs` | Pending | — | |
+| 1. Cargo.toml `vt100` | Added `vt100 = "0.16.2"`, removed direct `vte` | No | vt100 still depends on vte transitively. |
+| 2. `term/emulator.rs` | Created `TermEmulator` with PtyScreen-compatible surface + title/cursor/alt-screen | No | `full_text()` uses sliding scrollback offset to reconstruct all rows. |
+| 3. `term/widget.rs` | Created `TerminalPaneWidget` painting styled cells + cursor highlight | No | Wide-character continuation cells are skipped. |
+| 4. `runner.rs` raw reads + env + resize | Raw 8 KB reads; TERM/COLORTERM env; `resize` trait method | No | |
+| 5. `sandbox.rs` same | Raw 8 KB reads; TERM/COLORTERM added to `cmd.env` for `-e` propagation | No | |
+| 6. `agent.rs` emulator swap, delete `pty_screen.rs` | `PtyOutput.screen` is `TermEmulator`; `pty_screen.rs` deleted; lib.rs updated | No | |
+| 7. `app.rs` resize propagation | `record_pty_pane_dims` + `reconcile_pty_sizes`; Swift parse uses `full_text()` | No | `Action::Resize` no longer resizes directly. |
+| 8. `workflow_panel.rs` styled grid | Renders selected PTY agents via `TerminalPaneWidget` | No | Returns widget area for dims recording. |
+| 9. `tests/term_emulator.rs` | 5 tests + captured `claude_startup.bin` fixture | No | Added `tests/pty_styled_output.rs` as extra PTY integration validation. |
+| 10. `term/keys.rs` | Not implemented | N/A | Phase B only. |
+| 11. `app.rs` InputMode | Not implemented | N/A | Phase B only. |
+| 12. `event.rs` passthrough branch | Not implemented | N/A | Phase B only. |
+| 13. `layout.rs` Terminals grid | Not implemented | N/A | Phase B only. |
+| 14. `ui/terminal_pane.rs` | Not implemented | N/A | Phase B only. |
+| 15. `agents/vendor.rs` | Not implemented | N/A | Phase B only. |
+| 16. commands/engine spawn `--tui` + worktrees | Not implemented | N/A | Phase B only. |
+| 17. status bar + picker entries | Not implemented | N/A | Phase B only. |
+| 18. keys + passthrough tests | Not implemented | N/A | Phase B only. |
+| 19. `agent_events.rs` | Not implemented | N/A | Phase C only. |
+| 20. `transcript_tail.rs` | Not implemented | N/A | Phase C only. |
+| 21. control protocol AgentEvent | Not implemented | N/A | Phase C only. |
+| 22. `hooks.rs` + `eos hooks install` / `eos event` | Not implemented | N/A | Phase C only. |
+| 23. engine gist-from-event + lifecycle | Not implemented | N/A | Phase C only. |
+| 24. `tests/transcript_tail.rs` | Not implemented | N/A | Phase C only. |
