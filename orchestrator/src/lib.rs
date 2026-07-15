@@ -13,8 +13,8 @@ pub mod mock;
 pub mod model_registry;
 pub mod observability;
 pub mod policy;
-pub mod pty_screen;
 pub mod swarm;
+pub mod term;
 pub mod tui;
 pub mod ui;
 
@@ -340,7 +340,7 @@ pub fn run(config: Config) -> Result<()> {
     while !app.should_quit {
         guard
             .terminal()
-            .draw(|frame| ui::render_swarm(frame, &app))?;
+            .draw(|frame| ui::render_swarm(frame, &mut app))?;
 
         let action = event_handler.next();
         app.update(action);

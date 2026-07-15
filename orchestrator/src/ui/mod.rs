@@ -23,7 +23,7 @@ use crate::app::App;
 
 /// Render the full swarm UI. (The startup splash is a separate blocking animation run
 /// before the main loop — see `ui::startup` / `lib::run`.)
-pub fn render_swarm(frame: &mut Frame, app: &App) {
+pub fn render_swarm(frame: &mut Frame, app: &mut App) {
     use crate::app::FocusedPane;
 
     let input_height = prompt::input_height(app, frame.area().width);
@@ -46,17 +46,12 @@ pub fn render_swarm(frame: &mut Frame, app: &App) {
     }
     if let Some(rect) = workflow {
         let is_focused = app.focused_pane == FocusedPane::Workflow;
-        let (paragraph, mut state) = workflow_panel::render(app, rect, is_focused);
-        frame.render_widget(paragraph, rect);
-        frame.render_stateful_widget(
-            Scrollbar::new(ScrollbarOrientation::VerticalRight)
-                .style(Style::default().fg(Color::DarkGray)),
-            rect.inner(Margin {
-                vertical: 1,
-                horizontal: 0,
-            }),
-            &mut state,
-        );
+        let pty_rect = workflow_panel::render(&*app, frame, rect, is_focused);
+        if let Some(pty_rect) = pty_rect {
+            app.record_pty_pane_dims(pty_rect);
+        } else {
+            app.record_pty_pane_dims(rect);
+        }
     }
     if let Some(rect) = models {
         let is_focused = app.focused_pane == FocusedPane::Models;
@@ -95,7 +90,7 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
         let mut app = App::new(true, RunnerBackend::Pty);
         app.startup_phase = crate::app::StartupPhase::Done;
-        terminal.draw(|frame| render_swarm(frame, &app)).unwrap();
+        terminal.draw(|frame| render_swarm(frame, &mut app)).unwrap();
         let buf = terminal.backend().buffer();
         let row0: String = (0..80)
             .map(|col| buf[(col, 0)].symbol().to_string())
@@ -112,7 +107,7 @@ mod tests {
         app.input_buffer = "/ag".to_string();
         app.input_cursor = 3;
         app.maybe_open_picker();
-        terminal.draw(|frame| render_swarm(frame, &app)).unwrap();
+        terminal.draw(|frame| render_swarm(frame, &mut app)).unwrap();
         let buf = terminal.backend().buffer();
         let content: String = (0..24)
             .flat_map(|row| (0..80).map(move |col| (col, row)))
@@ -130,7 +125,7 @@ mod tests {
         app.input_buffer = "/agent s".to_string();
         app.input_cursor = 8;
         app.maybe_open_picker();
-        terminal.draw(|frame| render_swarm(frame, &app)).unwrap();
+        terminal.draw(|frame| render_swarm(frame, &mut app)).unwrap();
         let buf = terminal.backend().buffer();
         let content: String = (0..24)
             .flat_map(|row| (0..80).map(move |col| (col, row)))
@@ -151,7 +146,7 @@ mod tests {
         app.input_buffer = "/agent".to_string();
         app.input_cursor = 6;
         app.maybe_open_picker();
-        terminal.draw(|frame| render_swarm(frame, &app)).unwrap();
+        terminal.draw(|frame| render_swarm(frame, &mut app)).unwrap();
         let buf = terminal.backend().buffer();
         let content: String = (0..24)
             .flat_map(|row| (0..80).map(move |col| (col, row)))
@@ -172,7 +167,7 @@ mod tests {
         app.input_buffer = "@ki".to_string();
         app.input_cursor = 3;
         app.maybe_open_mention_picker();
-        terminal.draw(|frame| render_swarm(frame, &app)).unwrap();
+        terminal.draw(|frame| render_swarm(frame, &mut app)).unwrap();
         let buf = terminal.backend().buffer();
         let content: String = (0..24)
             .flat_map(|row| (0..80).map(move |col| (col, row)))

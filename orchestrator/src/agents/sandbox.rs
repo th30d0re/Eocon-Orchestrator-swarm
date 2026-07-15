@@ -1,4 +1,4 @@
-use std::io::{BufRead, BufReader};
+use std::io::Read;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::mpsc::{channel, Receiver, Sender};
@@ -259,7 +259,10 @@ impl ContainerMachineRunner {
 }
 
 impl AgentRunner for ContainerMachineRunner {
-    fn spawn(&self, cmd: AgentCmd, size: PtySize) -> Result<RunHandle, RunnerError> {
+    fn spawn(&self, mut cmd: AgentCmd, size: PtySize) -> Result<RunHandle, RunnerError> {
+        cmd.env.push(("TERM".to_string(), "xterm-256color".to_string()));
+        cmd.env.push(("COLORTERM".to_string(), "truecolor".to_string()));
+
         let (machine_name, dedicated) = self.resolve_machine(&cmd);
 
         self.ensure_image()?;
@@ -298,14 +301,12 @@ impl AgentRunner for ContainerMachineRunner {
             .try_clone_reader()
             .map_err(|e| RunnerError::CloneReader(e.to_string()))?;
         thread::spawn(move || {
-            let mut buf_reader = BufReader::new(&mut reader);
-            let mut buf = Vec::new();
+            let mut buf = [0u8; 8192];
             loop {
-                buf.clear();
-                match buf_reader.read_until(b'\n', &mut buf) {
+                match reader.read(&mut buf) {
                     Ok(0) => break,
-                    Ok(_) => {
-                        if tx.send(RunnerMsg::Bytes(buf.clone())).is_err() {
+                    Ok(n) => {
+                        if tx.send(RunnerMsg::Bytes(buf[..n].to_vec())).is_err() {
                             break;
                         }
                     }

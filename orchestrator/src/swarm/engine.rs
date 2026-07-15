@@ -6,7 +6,7 @@ use crate::chat::spawn_chat_request;
 use crate::memory::store::MemoryStore;
 use crate::observability::metrics::SwarmMetrics;
 use crate::policy::engine::PolicyEngine;
-use crate::pty_screen::PtyScreen;
+use crate::term::TermEmulator;
 use crate::swarm::agent::{
     AgentInstance, AgentLifecycleState, AgentOutput, AgentRole, ChatOutput, PtyOutput,
 };
@@ -204,8 +204,7 @@ impl SwarmEngine {
             .ok_or("agent not found")?;
         cmd.agent_id = Some(id.to_string());
         let handle = self.runner.spawn(cmd, size).map_err(|e| e.to_string())?;
-        let mut screen = PtyScreen::new(size.rows as usize, size.cols as usize);
-        screen.resize(size.rows as usize, size.cols as usize);
+        let screen = TermEmulator::new(size.rows as usize, size.cols as usize, 1000);
         agent.output = AgentOutput::Pty(PtyOutput {
             run_handle: Some(handle),
             screen,

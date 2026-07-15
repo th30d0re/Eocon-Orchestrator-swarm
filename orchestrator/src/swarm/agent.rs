@@ -6,7 +6,7 @@ use crate::agents::swift::SwiftBuildOutput;
 use crate::chat::{ChatEvent, ChatRequest};
 use crate::memory::store::{AgentMemory, MemoryStore};
 use crate::policy::policy::RiskLabel;
-use crate::pty_screen::PtyScreen;
+use crate::term::TermEmulator;
 use crate::swarm::verifier::GistDraft;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -107,7 +107,7 @@ pub struct ChatOutput {
 
 pub struct PtyOutput {
     pub run_handle: Option<RunHandle>,
-    pub screen: PtyScreen,
+    pub screen: TermEmulator,
 }
 
 impl AgentInstance {

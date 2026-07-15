@@ -236,6 +236,9 @@ pub struct App {
     pub current_provider: Option<String>,
     pub current_model: Option<String>,
     pub started: Instant,
+    /// Last recorded inner pane dimensions for each PTY agent, keyed by agent id.
+    /// The render pass updates this; the tick loop reconciles emulator/PTY resizes.
+    pty_pane_dims: HashMap<String, (u16, u16)>,
 }
 
 impl App {
@@ -301,6 +304,7 @@ impl App {
             current_provider: Some("anthropic".to_string()),
             current_model: Some("claude-sonnet-4-6".to_string()),
             started: Instant::now(),
+            pty_pane_dims: HashMap::new(),
         };
 
         if mock_mode {
@@ -351,6 +355,7 @@ impl App {
                 self.swarm_engine.assign_tasks();
                 self.drain_chat_responses();
                 self.drain_pty_outputs();
+                self.reconcile_pty_sizes();
             }
             Action::Tab => {
                 if self.startup_phase != StartupPhase::Done {
@@ -380,8 +385,9 @@ impl App {
                 }
                 self.show_help = !self.show_help;
             }
-            Action::Resize(cols, rows) => {
-                self.resize_screens(cols, rows);
+            Action::Resize(_cols, _rows) => {
+                // Per-agent pane dimensions are recorded during render and
+                // reconciled with the emulator/PTY on each tick.
             }
             Action::SelectNextAgent => {
                 if self.startup_phase != StartupPhase::Done {
@@ -511,16 +517,69 @@ impl App {
         }
     }
 
-    fn resize_screens(&mut self, cols: u16, rows: u16) {
-        let rows = rows as usize;
-        let cols = cols as usize;
-        if rows > 4 && cols > 10 {
-            for agent in &mut self.swarm_engine.agents {
-                match &mut agent.output {
-                    AgentOutput::Pty(pty) => {
-                        pty.screen.resize(rows.saturating_sub(4), cols / 2);
+    /// Record the inner cell dimensions of the given pane for every PTY agent.
+    /// Called by the render pass so the tick loop can reconcile emulator and
+    /// child PTY sizes.
+    pub fn record_pty_pane_dims(&mut self, rect: ratatui::layout::Rect) {
+        use ratatui::layout::Margin;
+        let inner = rect.inner(Margin {
+            vertical: 1,
+            horizontal: 1,
+        });
+        let dims = (inner.height, inner.width);
+        for agent in &self.swarm_engine.agents {
+            if matches!(agent.output, AgentOutput::Pty(_)) {
+                self.pty_pane_dims.insert(agent.id.clone(), dims);
+            }
+        }
+    }
+
+    /// Resize emulators and propagate SIGWINCH to child PTYs when a pane's
+    /// recorded dimensions differ from what the emulator currently has.
+    fn reconcile_pty_sizes(&mut self) {
+        use portable_pty::PtySize;
+
+        let runner = self.swarm_engine.runner.clone();
+        let ids: Vec<String> = self
+            .swarm_engine
+            .agents
+            .iter()
+            .map(|a| a.id.clone())
+            .collect();
+        for id in ids {
+            let dims = self.pty_pane_dims.get(&id).copied();
+            let needs_resize = if let Some(agent) = self.swarm_engine.get_agent(&id) {
+                if let AgentOutput::Pty(pty) = &agent.output {
+                    let (emu_rows, emu_cols) = pty.screen.dims();
+                    dims.map_or(false, |(rows, cols)| {
+                        emu_rows != rows as usize || emu_cols != cols as usize
+                    })
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            if !needs_resize {
+                continue;
+            }
+            let Some((rows, cols)) = dims else {
+                continue;
+            };
+
+            if let Some(agent) = self.swarm_engine.get_agent_mut(&id) {
+                if let AgentOutput::Pty(pty) = &mut agent.output {
+                    pty.screen.resize(rows as usize, cols as usize);
+                    if let Some(handle) = &pty.run_handle {
+                        let size = PtySize {
+                            rows: rows as u16,
+                            cols: cols as u16,
+                            pixel_width: 0,
+                            pixel_height: 0,
+                        };
+                        let _ = runner.resize(handle, size);
                     }
-                    AgentOutput::SwiftResult(_) | AgentOutput::Chat(_) | AgentOutput::None => {}
                 }
             }
         }
@@ -723,7 +782,7 @@ impl App {
                         if is_build_or_test_agent {
                             let screen_text: String = pty
                                 .screen
-                                .as_text()
+                                .full_text()
                                 .lines
                                 .iter()
                                 .map(|l| l.to_string())

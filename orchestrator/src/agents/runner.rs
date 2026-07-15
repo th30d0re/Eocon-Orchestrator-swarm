@@ -1,4 +1,4 @@
-use std::io::{BufRead, BufReader, Write};
+use std::io::{Read, Write};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
 
@@ -57,6 +57,12 @@ pub enum RunnerError {
 pub trait AgentRunner: Send + Sync {
     fn spawn(&self, cmd: AgentCmd, size: PtySize) -> Result<RunHandle, RunnerError>;
     fn kill(&self, handle: &mut RunHandle) -> Result<(), RunnerError>;
+    fn resize(&self, handle: &RunHandle, size: PtySize) -> Result<(), RunnerError> {
+        handle
+            .master
+            .resize(size)
+            .map_err(|e| RunnerError::OpenPty(e.to_string()))
+    }
 }
 
 pub struct PtyRunner;
@@ -80,6 +86,8 @@ impl AgentRunner for PtyRunner {
         }
         cmd_builder.env("CLICOLOR_FORCE", "1");
         cmd_builder.env("FORCE_COLOR", "1");
+        cmd_builder.env("TERM", "xterm-256color");
+        cmd_builder.env("COLORTERM", "truecolor");
 
         let child = pair
             .slave
@@ -99,14 +107,12 @@ impl AgentRunner for PtyRunner {
             .try_clone_reader()
             .map_err(|e| RunnerError::CloneReader(e.to_string()))?;
         thread::spawn(move || {
-            let mut buf_reader = BufReader::new(&mut reader);
-            let mut buf = Vec::new();
+            let mut buf = [0u8; 8192];
             loop {
-                buf.clear();
-                match buf_reader.read_until(b'\n', &mut buf) {
+                match reader.read(&mut buf) {
                     Ok(0) => break,
-                    Ok(_) => {
-                        if tx.send(RunnerMsg::Bytes(buf.clone())).is_err() {
+                    Ok(n) => {
+                        if tx.send(RunnerMsg::Bytes(buf[..n].to_vec())).is_err() {
                             break;
                         }
                     }
