@@ -29,10 +29,11 @@ actor MLXBackend: InferenceBackend {
     private let admission = WiredMemoryAdmission()
     private var activeBytes: Int = 0
 
-    init(modelId: String, systemPrompt: String = "You are a focused swarm agent. Answer concisely.", maxTokens: Int = 512) {
+    init(modelId: String, systemPrompt: String = "You are a focused swarm agent. Answer concisely.", maxTokens: Int? = nil) {
         self.modelId = modelId
         self.systemPrompt = systemPrompt
-        self.maxTokens = maxTokens
+        let envMaxTokens = Int(ProcessInfo.processInfo.environment["EOCON_MLX_MAX_TOKENS"] ?? "") ?? 512
+        self.maxTokens = maxTokens ?? envMaxTokens
     }
 
     func prepare() async throws {
@@ -187,7 +188,7 @@ enum MLXBackendError: Error, CustomStringConvertible {
 /// `scripts/build-mlx.sh` (xcodebuild + Metal Toolchain).
 struct MLXBackend: InferenceBackend {
     let modelId: String
-    init(modelId: String, systemPrompt: String = "", maxTokens: Int = 512) {
+    init(modelId: String, systemPrompt: String = "", maxTokens: Int? = nil) {
         self.modelId = modelId
     }
 

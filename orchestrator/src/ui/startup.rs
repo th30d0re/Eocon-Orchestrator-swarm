@@ -61,7 +61,92 @@ const EOCON_SLASH: &[&str] = &[
     r"",
 ];
 
-const EOCON_VARIANTS: &[&[&str]] = &[EOCON_BOX, EOCON_BOLD, EOCON_MINIMAL, EOCON_SLASH];
+/// User pixel-block wordmark (asciilab export) — E as stacked bars + O C O N.
+const EOCON_PIXEL: &[&str] = &[
+    r"             ███████████████",
+    r" ███████████████████████████",
+    r" █████████████████████████·",
+    r"  ██████████████████████",
+    r"",
+    r"",
+    r"                              ██████      ███████     ███████    ████      ████",
+    r"            ███████           ████████   █████████    ████████   █████     ████",
+    r" ██████████████████           █████████ ██████████     ████████  ██████    ████",
+    r" ██████████████████        ██  ██ ███████████ ███  ███ ██ ██████ ███████   ████",
+    r"                           ███·     ███████        ████     ████ ████████  ████",
+    r"                          ████      ███████        ████      ███ █████████ ████",
+    r"                          ████      ██████         ████      ███ ████ █████████",
+    r"                          ████      ███████        ████     ████ ████  ████████",
+    r"                           ████     ████████       █████    ·███ ████  ████████",
+    r"                           █████████  ███████████   ████████  ██ ████   ███████",
+    r" ████████████████████████████████████   ██████████  █████████    ████    ██████",
+    r" ████████████████████████████████████    █████████    ███████    ████      ████",
+    r"  █████████████████████████████████        █████       █████     ████      ████",
+];
+
+/// User plus/x textured wordmark (asciilab export).
+const EOCON_CROSS: &[&str] = &[
+    r"    +x+x+x+x+x+x+x+x+x+x+",
+    r" +x+x+x+x+x+xxx+xxx+x+x++",
+    r" x+x+x+x+x+x+x+x+x+x+x",
+    r"",
+    r"",
+    r"                          x+x+x+     +x+x+x+   +x+x+xx   +x+     +x+x",
+    r" x+x+x+x+x+x+x+x+         +x+x+x+x x+x+x+x+x   x+x+x+x+  x+x++   x+x+",
+    r" +x+x+x+x+x+x+x+x       x  +x+x+x+ +x+x+x+x  ++ x+x+x+x+ +x+x+x  +x+x",
+    r"  +x+x+x+x+x+x+x+      x+x+    x+x+x+x       x+x    +x+x x+x+x++ x+x+",
+    r"                       +x+x    xx+x+x       ++x+     +x+ +x+x+x++xx+x",
+    r"                       x+x      +x+x+       +x+x     x+x ++x ++x+++x+",
+    r"                       +x+x    +x+x+x+       +x+     +x+ +x+x x+x+x+x",
+    r"                       x+x+x  + +x+x+x+  x   x+x++ + x+x x+x+  x+x+x+",
+    r" +        ++○xx+xxx+x+x x+x+x+x+   +x+x+x+x+ xx+x+x+x    +x+x  +x+x+x",
+    r" x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x    +x+x+x+x  +x+x+x+x   x+x+   +x+x+",
+    r" +x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+     +x+x+      x+x+x+   +x++    +x+x",
+];
+
+/// User dense @-field wordmark (asciilab export) — opaque-background variant.
+const EOCON_DENSE: &[&str] = &[
+    r"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
+    r"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
+    r"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
+    r"@@@@@@@@@@@@@@@@@@vczczczczczczczczczcK@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
+    r"@@vcccvcvcccvcvcvcvcvcccvcccvcccvcccvcvcX@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
+    r"@@cccccccvcccvccccccccccccccccccccccc@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
+    r"@@vcccvcccvcccvcccvcccvcccvcccvcccv@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
+    r"@@@@KXKXKXKXKXKXKXKXKXKXKXKXKXKX@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
+    r"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
+    r"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
+    r"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
+    r"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ccccccc@@@@@@@@@@ccccccc@@@@@@@@@Xccccccc@@@@@@@ccccc@@@@@@@@ccccc@@",
+    r"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@cvcvcvcvcc@@@@@@cvcvcvcvcvc@@@@@@@cvcvcvcvcv@@@@@vcvcv@@@@@@@@vvcvc@@",
+    r"@@zccccccczccccccccccccccx@@@@@@@@@@@@@@@ccccccccccc@@@@cccccccccccc@@@@@@@ccccccccccc@@@@ccccccc@@@@@@vcccc@@",
+    r"@@vcccvcccvcccvcccvcccvccv@@@@@@@@@@@@@@@@vcccvcvcvcc@@cccvcccvcccv@@@@@@@@@ccccccvcccc@@@vcccvccc@@@@@vccvc@@",
+    r"@@cccccccccccccccccccccccv@@@@@@@@@@@cc@@@vc@@@cccccccccccccc@@@ccc@@@@cc@@@cc@@@ccccccv@@ccccccccz@@@@vcccc@@",
+    r"@@@vvzczczczczczczczczczc@@@@@@@@@@@@cvcvX@@@@@@@cvcvcccvcv@@@@@@@@@@@@cvcvK@@@@@@@cvcvc@@vcvcccvccz@@@vvcvc@@",
+    r"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ccccv@@@@@@@Xccccccccc@@@@@@@@@@@@ccvcn@@@@@@@vcccc@@ccccccccccK@@vcccc@@",
+    r"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@cvcc@@@@@@@@@vcccvcvc@@@@@@@@@@@@vcccv@@@@@@@@@ccvcX@vcccvcccvcc@@vccvc@@",
+    r"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@Kcccc@@@@@@@@@cccccccc@@@@@@@@@@@@zcccc@@@@@@@@@ccccz@ccccc@cccccc@vcccc@@",
+    r"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@Xcvcv@@@@@@@@@ccvcccvc@@@@@@@@@@@@ccvcc@@@@@@@@@vcvcX@vcvcv@@cvcvcc@vcvc@@",
+    r"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ccccv@@@@@@@Xccccccccz@@@@@@@@@@@KccccX@@@@@@@vcccc@@ccccc@@@cccccccccc@@",
+    r"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@cvcvc@@@@@@@Kvcvcccccv@@@@@@@@@@@@cvcvc@@@@@@@Kvcvc@@vcccv@@@@cccvcccvc@@",
+    r"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@vcccccc@@@cz@@@cczcccccc@@@zcK@@@@ccccccc@@@cK@@@cv@@ccccc@@@@@cccccccc@@",
+    r"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@vcvcvcvcccv@@@@@@cvcccvcccvcc@@@@@vcvcvcccvcc@@@@@@@vcvcv@@@@@vcvcvcvc@@",
+    r"@@cccccccccccccccccccccccccccccccccccc@ccccccccccc@@@@@@cccccccccccc@@@@@ccccccccccc@@@@@@ccccc@@@@@@ccccccc@@",
+    r"@@vcccvcccvcvcvcvcvcvcvcvcvcvcvcvcvcvcvcccvcvcvcvc@@@@@@@cvcvcvcvcvc@@@@@@vcccvcvcvc@@@@@@vcccc@@@@@@@@vccvc@@",
+    r"@@zccccccccccccccccccccccccccccccccccccccccccccccc@@@@@@@@@ccccccc@@@@@@@@@@cccccccn@@@@@@ccccc@@@@@@@@ccccc@@",
+    r"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
+    r"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
+];
+
+const EOCON_VARIANTS: &[&[&str]] = &[
+    EOCON_BOX,
+    EOCON_BOLD,
+    EOCON_MINIMAL,
+    EOCON_SLASH,
+    EOCON_PIXEL,
+    EOCON_CROSS,
+    EOCON_DENSE,
+];
 
 /// Characters used for glitch frames.
 const GLITCH_CHARS: &[char] = &[
@@ -263,7 +348,9 @@ where
             continue;
         }
 
-        let batch = 3 + (rng.next() % 4);
+        // Batch scales with logo area so large arts (up to ~3000 chars) still reveal
+        // in ~1.5s, while the compact variants keep their original 3–6 chars/frame feel.
+        let batch = (total_chars / 90).max(3) + (rng.next() % 4);
         for _ in 0..batch {
             if revealed_count >= reveal_order.len() {
                 break;
